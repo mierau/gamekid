@@ -18,6 +18,7 @@ typedef struct _GKLibraryView {
 	int scroll_y;
 	LCDBitmap* icon_image;
 	LCDFont* font;
+	uint32_t keyrepeat_timer;
 } GKLibraryView;
 
 
@@ -117,18 +118,12 @@ void GKLibraryDraw(GKLibraryView* view) {
 }
 
 void GKLibraryViewUpdate(GKLibraryView* view, unsigned int dt) {
-	PDButtons buttons_pushed;
-	playdate->system->getButtonState(NULL, &buttons_pushed, NULL);
+	PDButtons buttons_just_pushed;
+	PDButtons buttons_down;
+
+	playdate->system->getButtonState(&buttons_down, &buttons_just_pushed, NULL);
 	
-	if(buttons_pushed & kButtonDown) {
-		view->selection = GKMin(view->selection+1, view->list_length-1);
-	}
-	
-	if(buttons_pushed & kButtonUp) {
-		view->selection = GKMax(view->selection-1, 0);
-	}
-	
-	if((buttons_pushed & kButtonA) && (view->list_length > 0)) {
+	if((buttons_just_pushed & kButtonA) && (view->list_length > 0)) {
 		void* filename = ListGet(view->list, view->selection);
 		char path[256];
 		
@@ -137,6 +132,35 @@ void GKLibraryViewUpdate(GKLibraryView* view, unsigned int dt) {
 		strcpy(path + 6, filename);
 		
 		GKAppGoToGame(view->app, path);
+		return;
+	}
+	
+	int selection_delta = 0;
+	
+	if(buttons_just_pushed & kButtonDown) {
+		view->keyrepeat_timer = 0;
+		selection_delta = 1;
+	}
+	if(buttons_just_pushed & kButtonUp) {
+		view->keyrepeat_timer = 0;
+		selection_delta = -1;
+	}
+	
+	view->keyrepeat_timer += dt;
+	if(view->keyrepeat_timer >= 200) {
+		view->keyrepeat_timer = 0;
+		
+		if(buttons_down & kButtonDown) {
+			selection_delta = 1;
+		}
+		
+		if(buttons_down & kButtonUp) {
+			selection_delta = -1;
+		}
+	}
+	
+	if(selection_delta != 0) {
+		view->selection = GKMin(GKMax(view->selection+selection_delta, 0), view->list_length-1);
 	}
 	
 	// Update scroll.
