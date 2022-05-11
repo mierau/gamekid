@@ -7,7 +7,7 @@ The emulator backend is provided by the equaly teeny [PeanutGB](https://github.c
 2. [Sideload](https://play.date/account/sideload/) the resulting pdx on your Playdate.
 
 ## Install Games
-The Game Boy has a bustling homebrew community. There are various sources online, but [Itch](https://itch.io/games/tag-gameboy/tag-homebrew) or [Homebrew Hub](https://gbhh.avivace.com/games) seem to be a good places to start.
+The Game Boy has a bustling homebrew community. There are various sources online, but [Itch](https://itch.io/games/tag-gameboy/tag-homebrew) or [Homebrew Hub](https://gbhh.avivace.com/games) seem to be good places to start.
 1. Reboot your Playdate into Data Disk mode (Settings > System > Reboot to Data Disk).
 2. Connect your Playdate to your computer.
 3. Copy your .gb files into the `*.gamekid/games` folder.

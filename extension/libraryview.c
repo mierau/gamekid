@@ -78,7 +78,17 @@ void listFilesCallback(const char* filename, void* context) {
 	}
 	
 	int filename_length = strlen(filename);
-	if(filename_length < 3 || filename[filename_length-3] != '.' || filename[filename_length-2] != 'g' || filename[filename_length-1] != 'b') {
+	const char* file_extension = strrchr(filename, '.');
+	bool file_allowed = false;
+	
+	if(file_extension != NULL && file_extension != filename) {
+		// Allow GB and GBC files.
+		if(strcmp(file_extension, ".gb") == 0 || strcmp(file_extension, ".GB") == 0 || strcmp(file_extension, ".gbc") == 0 || strcmp(file_extension, ".GBC") == 0) {
+			file_allowed = true;
+		}
+	}
+	
+	if(!file_allowed) {
 		return;
 	}
 	
@@ -129,7 +139,7 @@ void GKLibraryDraw(GKLibraryView* view) {
 		}
 	}
 	else {
-		const char* message = "Place your .gb files in\nGamekid's games folder\non your Playdate's Data Disk.\n\nThis is still very beta, enjoy!";
+		const char* message = "Place your .gb or .gbc files in\nGamekid's games folder\non your Playdate's Data Disk.\n\nThis is still very beta, enjoy!";
 		playdate->graphics->setDrawMode(kDrawModeFillBlack);
 		playdate->graphics->drawText(message, strlen(message), kASCIIEncoding, 30, 30);
 	}
