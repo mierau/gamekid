@@ -9,7 +9,7 @@ The emulator backend is provided by the equaly teeny [PeanutGB](https://github.c
 ## Install Games
 1. Reboot your Playdate into Data Disk mode (Settings > System > Reboot to Data Disk).
 2. Connect your Playdate to your computer.
-3. Copy your .gb files into the `app.gamekid.data/games` folder.
+3. Copy your .gb files into the `*.gamekid/games` folder.
 4. Unmount the Playdate.
 5. That's it. Run Gamekid. Enjoy!
 

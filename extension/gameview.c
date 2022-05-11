@@ -12,6 +12,7 @@
 
 #define ENABLE_SOUND 0
 #define ENABLE_LCD 1
+#define PEANUT_GB_HIGH_LCD_ACCURACY 0
 #include "peanut_gb.h"
 
 // Emulator callbacks

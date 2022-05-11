@@ -1,7 +1,7 @@
 name=Gamekid
 author=Dustin Mierau
 description=Classic games on your Playdate.
-bundleID=app.gamekid.data
-version=0.2
+bundleID=app.gamekid.gamekid
+version=0.3
 imagePath=images/
 launchSoundPath=sound/startup
