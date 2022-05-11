@@ -3,7 +3,7 @@ A community built Game Boy emulator for [Playdate](https://play.date).
 The emulator backend is provided by the equaly teeny [PeanutGB](https://github.com/deltabeard/Peanut-GB).
 
 ## Install
-1. Download the latest version of Gamekid.
+1. [Download](https://github.com/mierau/gamekid/releases/) the latest version of Gamekid.
 2. [Sideload](https://play.date/account/sideload/) the resulting pdx on your Playdate.
 
 ## Install Games
