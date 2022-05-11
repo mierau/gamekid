@@ -19,6 +19,8 @@ typedef struct _GKLibraryView {
 	LCDBitmap* icon_image;
 	LCDFont* font;
 	uint32_t keyrepeat_timer;
+	SamplePlayer* up_sound;
+	SamplePlayer* down_sound;
 } GKLibraryView;
 
 
@@ -32,6 +34,15 @@ GKLibraryView* GKLibraryViewCreate(GKApp* app) {
 	view->scroll_y = 0;
 	view->icon_image = playdate->graphics->loadBitmap("images/browser-icon", NULL);
 	view->font = playdate->graphics->loadFont("fonts/Asheville-Sans-14-Bold", NULL);
+	
+	AudioSample* down_sample = playdate->sound->sample->load("sound/listdown");
+	view->down_sound = playdate->sound->sampleplayer->newPlayer();
+	playdate->sound->sampleplayer->setSample(view->down_sound, down_sample);
+	
+	AudioSample* up_sample = playdate->sound->sample->load("sound/listup");
+	view->up_sound = playdate->sound->sampleplayer->newPlayer();
+	playdate->sound->sampleplayer->setSample(view->up_sound, up_sample);
+		
 	return view;
 }
 
@@ -45,6 +56,15 @@ void GKLibraryViewDestroy(GKLibraryView* view) {
 	if(view->font != NULL) {
 		free(view->font);
 	}
+	if(view->down_sound != NULL) {
+		playdate->sound->sampleplayer->freePlayer(view->down_sound);
+		view->down_sound = NULL;
+	}
+	if(view->up_sound != NULL) {
+		playdate->sound->sampleplayer->freePlayer(view->up_sound);
+		view->up_sound = NULL;
+	}
+	
 	free(view);
 }
 
@@ -147,7 +167,7 @@ void GKLibraryViewUpdate(GKLibraryView* view, unsigned int dt) {
 	}
 	
 	view->keyrepeat_timer += dt;
-	if(view->keyrepeat_timer >= 200) {
+	if(view->keyrepeat_timer >= 180) {
 		view->keyrepeat_timer = 0;
 		
 		if(buttons_down & kButtonDown) {
@@ -160,7 +180,18 @@ void GKLibraryViewUpdate(GKLibraryView* view, unsigned int dt) {
 	}
 	
 	if(selection_delta != 0) {
-		view->selection = GKMin(GKMax(view->selection+selection_delta, 0), view->list_length-1);
+		int new_selection = GKMin(GKMax(view->selection+selection_delta, 0), view->list_length-1);
+		
+		playdate->sound->sampleplayer->stop(view->down_sound);
+		playdate->sound->sampleplayer->stop(view->up_sound);
+		if(new_selection > view->selection) {
+			playdate->sound->sampleplayer->play(view->down_sound, 1, 1.0);
+		}
+		else if(new_selection < view->selection) {
+			playdate->sound->sampleplayer->play(view->up_sound, 1, 1.0);
+		}
+		
+		view->selection = new_selection;
 	}
 	
 	// Update scroll.
