@@ -338,24 +338,6 @@ static void update_noise(int16_t *restrict left, int16_t *restrict right, int le
 	}
 }
 
-/**
- * SDL2 style audio callback function.
- */
-// void audio_callback(void *userdata, uint8_t *restrict stream, int len)
-// {
-// 	float *samples = (float *)stream;
-// 
-// 	/* Appease unused variable warning. */
-// 	(void)userdata;
-// 
-// 	memset(stream, 0, len);
-// 
-// 	update_square(samples, 0);
-// 	update_square(samples, 1);
-// 	update_wave(samples);
-// 	update_noise(samples);
-// }
-
 static void chan_trigger(uint_fast8_t i)
 {
 	struct chan *c = chans + i;
@@ -580,13 +562,15 @@ void audio_init(void)
 	}
 }
 
-int playdate_audio_source_callback(void* context, int16_t* left, int16_t* right, int len) {
-	memset(left, 0, len);
-	memset(right, 0, len);
+int GKAudioSourceCallback(void* context, int16_t* left, int16_t* right, int len) {
 	update_square(left, right, 0, len);
 	update_square(left, right, 1, len);
 	update_wave(left, right, len);
-	update_noise(left, right, len);
+	// update_noise(left, right, len);
 	
-	return 1;
+	for(int i = 0; i < len; ++i) {
+		if(left[i] != 0 || right[i] != 0) return 1;
+	}
+	
+	return 0;
 }

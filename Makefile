@@ -12,6 +12,7 @@ VPATH += extension/lib
 # List C source files here
 SRC = extension/main.c \
 			extension/app.c \
+			extension/lib/utility.c \
 			extension/lib/list.c \
 			extension/libraryview.c \
 			extension/gameview.c \

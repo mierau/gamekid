@@ -1,6 +1,10 @@
 // gameview.c
 // Gamekid by Dustin Mierau
 
+#define ENABLE_SOUND 0
+#define ENABLE_LCD 1
+#define PEANUT_GB_HIGH_LCD_ACCURACY 0
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -9,78 +13,29 @@
 #include "gameview.h"
 #include "pd_api.h"
 #include "common.h"
+#include "utility.h"
 
-#define ENABLE_SOUND 1
-#define ENABLE_LCD 1
-#define PEANUT_GB_HIGH_LCD_ACCURACY 0
+#if ENABLE_SOUND
 #include "emulator/minigb_apu.h"
+#endif
+
 #include "emulator/peanut_gb.h"
 
-// Emulator callbacks
-static uint8_t* read_rom_to_ram(const char* file_name);
-static void read_cart_ram_file(const char *save_file_name, uint8_t** dest, const size_t len);
-static void write_cart_ram_file(const char* save_file_name, uint8_t* src, const size_t len);
-static uint8_t gb_rom_read(struct gb_s *gb, const uint_fast32_t addr);
-static uint8_t gb_cart_ram_read(struct gb_s *gb, const uint_fast32_t addr);
-static void gb_cart_ram_write(struct gb_s *gb, const uint_fast32_t addr, const uint8_t val);
-static void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t val);
+// Emulator
+static void GKGameViewUpdateJoypad(GKGameView* view);
+static void GKGameViewUpdateCrank(GKGameView* view);
+static uint8_t* GKReadROMFile(const char* file_name);
+static void GKGameViewReadSaveFile(const char* save_file_name, uint8_t** dest, const size_t len);
+static uint8_t GKCartridgeGetROMByte(struct gb_s* gb, const uint_fast32_t addr);
+static uint8_t GKCartridgeGetRAMByte(struct gb_s* gb, const uint_fast32_t addr);
+static void GKCartridgeWriteRAM(struct gb_s* gb, const uint_fast32_t addr, const uint8_t val);
+static void GKCartridgeError(struct gb_s* gb, const enum gb_error_e gb_err, const uint16_t val);
 
-// Rendering methods
-static void fitted_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line);
-static void natural_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line);
-static void double_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line);
-static void sliced_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line);
-
-static inline uint32_t swap(uint32_t n) {
-#if TARGET_PLAYDATE
-		uint32_t result;
-		__asm volatile ("rev %0, %1" : "=l" (result) : "l" (n));
-		return(result);
-#else
-		return ((n & 0xff000000) >> 24) | ((n & 0xff0000) >> 8) | ((n & 0xff00) << 8) | (n << 24);
-#endif
-}
-
-const char* GKGetFilename(const char* path, int* len) {
-	char* base = strrchr(path, '/');
-	path = base ? base + 1 : path;
-	
-	char* dot = strrchr(path, '.');
-	if(dot != NULL) {
-		*len = (dot - 1) - path;
-	} else {
-		*len = strlen(path);
-	}
-	
-	return path;
-}
-
-static const int GKDisplayPatterns[4][4][4] = {
-	{ // White
-		{1, 1, 1, 1},
-		{1, 1, 1, 1},
-		{1, 1, 1, 1},
-		{1, 1, 1, 1}
-	},
-	{ // Light Grey
-		{0, 1, 0, 1},
-		{1, 1, 1, 1},
-		{0, 1, 0, 1},
-		{1, 1, 1, 1}
-	},
-	{ // Dark Grey
-		{1, 0, 1, 0},
-		{0, 1, 0, 1},
-		{1, 0, 1, 0},
-		{0, 1, 0, 1}
-	},
-	{ // Black
-		{0, 0, 0, 0},
-		{0, 0, 0, 0},
-		{0, 0, 0, 0},
-		{0, 0, 0, 0}
-	}
-};
+// Rendering
+static void GKLCDDrawLineNatural(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line);
+static void GKLCDDrawLineFitted(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line);
+static void GKLCDDrawLineDoubled(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line);
+static void GKLCDDrawLineSliced(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line);
 
 typedef struct _GKGameView {
 	GKApp* app;
@@ -92,21 +47,16 @@ typedef struct _GKGameView {
 	int selected_scale;
 	bool interlace_enabled;
 	uint32_t* current_frame;
-	SoundSource* sound_source;
+	uint8_t* rom; // Memory for ROM file.
+	uint8_t* cart_ram; // Memory for save file.
 	
 	char* save_file_name;
-	
-	/* Pointer to allocated memory holding GB file. */
-	uint8_t* rom;
-	
-	/* Pointer to allocated memory holding save file. */
-	uint8_t* cart_ram;
-	
 	int save_timer;
+	
+#if ENABLE_SOUND
+	SoundSource* sound_source;
+#endif
 } GKGameView;
-
-static void updateJoypad(GKGameView* view);
-static void updateCrank(GKGameView* view);
 
 GKGameView* GKGameViewCreate(GKApp* app) {
 	GKGameView* view = malloc(sizeof(GKGameView));
@@ -130,10 +80,12 @@ void GKGameViewDestroy(GKGameView* view) {
 #pragma mark -
 
 void GKGameViewReset(GKGameView* view) {
+#if ENABLE_SOUND
 	if(view->sound_source != NULL) {
 		playdate->sound->removeSource(view->sound_source);
 		view->sound_source = NULL;
 	}
+#endif
 
 	if(view->cart_ram != NULL) {
 		free(view->cart_ram);
@@ -162,7 +114,20 @@ void GKGameViewSave(GKGameView* view) {
 		return;
 	}
 	
-	write_cart_ram_file(view->save_file_name, view->cart_ram, gb_get_save_size(&view->gb));
+	int ram_length = gb_get_save_size(&view->gb);
+	
+	// Make sure there is something to save.
+	if(ram_length == 0) {
+		return;
+	}
+	
+	GKFile* f;
+	if((f = GKFileOpen(view->save_file_name, kGKFileWrite)) == NULL) {
+		GKLog("Gamekid: Unable to open save file at %s.", view->save_file_name);
+		return;
+	}
+	GKFileWrite(view->cart_ram, ram_length, f);
+	GKFileClose(f);
 }
 
 bool GKGameViewShow(GKGameView* view, const char* path) {
@@ -179,7 +144,7 @@ bool GKGameViewShow(GKGameView* view, const char* path) {
 	GKGameViewReset(view);
 	
 	// Read ROM into memory.
-	if((view->rom = read_rom_to_ram(path)) == NULL) {
+	if((view->rom = GKReadROMFile(path)) == NULL) {
 		GKLog("RAM READ ERROR %d\n", __LINE__);
 		return false;
 	}
@@ -207,7 +172,7 @@ bool GKGameViewShow(GKGameView* view, const char* path) {
 		strcpy(view->save_file_name + strlen(save_dir) + filename_length, extension);
 	}
 	
-	gb_ret = gb_init(&view->gb, &gb_rom_read, &gb_cart_ram_read, &gb_cart_ram_write, &gb_error, view);
+	gb_ret = gb_init(&view->gb, &GKCartridgeGetROMByte, &GKCartridgeGetRAMByte, &GKCartridgeWriteRAM, &GKCartridgeError, view);
 	switch(gb_ret) {
 	case GB_INIT_NO_ERROR:
 		break;
@@ -226,35 +191,37 @@ bool GKGameViewShow(GKGameView* view, const char* path) {
 	}
 	
 	// Load save file.
-	read_cart_ram_file(view->save_file_name, &view->cart_ram, gb_get_save_size(&view->gb));
+	GKGameViewReadSaveFile(view->save_file_name, &view->cart_ram, gb_get_save_size(&view->gb));
 	
 	// Initialize sound.
+#if ENABLE_SOUND
 	playdate->sound->channel->setVolume(playdate->sound->getDefaultChannel(), 0.2f);
-	view->sound_source = playdate->sound->addSource(playdate_audio_source_callback, NULL, 1);
+	view->sound_source = playdate->sound->addSource(GKAudioSourceCallback, NULL, 1);
 	audio_init();
+#endif
 
 	// Initialize display.
 	void* lcd_func = NULL;
 	
 	if(view->selected_scale == 0) {
-		lcd_func = natural_lcd_draw_line;
+		lcd_func = GKLCDDrawLineNatural;
 	}
 	else if(view->selected_scale == 1) {
-		lcd_func = fitted_lcd_draw_line;
+		lcd_func = GKLCDDrawLineFitted;
 	}
 	else if(view->selected_scale == 2) {
-		lcd_func = sliced_lcd_draw_line;
+		lcd_func = GKLCDDrawLineSliced;
 	}
 	else if(view->selected_scale == 3) {
-		lcd_func = double_lcd_draw_line;
+		lcd_func = GKLCDDrawLineDoubled;
 	}
 	
 	gb_init_lcd(&view->gb, NULL);
 	view->gb.display.lcd_draw_line = lcd_func;
 	view->gb.direct.frame_skip = 1;
+	view->gb.direct.joypad = 255;
 	view->gb.direct.interlace = view->interlace_enabled;
 
-	
 	// auto_assign_palette(&priv, gb_colour_hash(&gb));
 	
 	return true;
@@ -275,8 +242,8 @@ void GKGameViewUpdate(GKGameView* view, unsigned int dt) {
 	playdate->graphics->setDrawMode(kDrawModeCopy);
 	view->current_frame = (uint32_t*)playdate->graphics->getFrame();
 	
-	updateJoypad(view);
-	updateCrank(view);
+	GKGameViewUpdateJoypad(view);
+	GKGameViewUpdateCrank(view);
 	
 	// view->updated_row_top = LCD_ROWS;
 	// view->updated_row_bottom = 0;
@@ -303,27 +270,7 @@ void GKGameViewUpdate(GKGameView* view, unsigned int dt) {
 
 #pragma mark -
 
-static void write_cart_ram_file(const char* save_file_name, uint8_t* src, const size_t len) {
-	GKFile* f;
-	
-	if(len == 0 || src == NULL) {
-		GKLog("FAIL TO SAVE FILE %i %p", len, src);
-		return;
-	}
-	
-	if((f = GKFileOpen(save_file_name, kGKFileWrite)) == NULL) {
-		GKLog("Unable to open save file.");
-		// GKLog("%d\n", __LINE__);
-		// exit(EXIT_FAILURE);
-		return;
-	}
-	
-	/* Record save file. */
-	GKFileWrite(src, len, f);
-	GKFileClose(f);
-}
-
-static uint8_t* read_rom_to_ram(const char* file_name) {
+static uint8_t* GKReadROMFile(const char* file_name) {
 	GKFile* rom_file = GKFileOpen(file_name, kGKFileReadData);
 	size_t rom_size;
 	uint8_t* rom = NULL;
@@ -346,7 +293,7 @@ static uint8_t* read_rom_to_ram(const char* file_name) {
 	return rom;
 }
 
-static void read_cart_ram_file(const char* save_file_name, uint8_t** dest, const size_t len) {
+static void GKGameViewReadSaveFile(const char* save_file_name, uint8_t** dest, const size_t len) {
 	GKFile* f;
 	
 	/* If save file not required. */
@@ -377,46 +324,83 @@ static void read_cart_ram_file(const char* save_file_name, uint8_t** dest, const
 	GKFileClose(f);
 }
 
-static uint8_t gb_rom_read(struct gb_s* gb, const uint_fast32_t addr) {
-	const GKGameView* const p = gb->direct.priv;
-	return p->rom[addr];
+static uint8_t GKCartridgeGetROMByte(struct gb_s* gb, const uint_fast32_t addr) {
+	const GKGameView* const view = gb->direct.priv;
+	return view->rom[addr];
 }
 
-static uint8_t gb_cart_ram_read(struct gb_s* gb, const uint_fast32_t addr) {
-	const GKGameView* const p = gb->direct.priv;
-	return p->cart_ram[addr];
+static uint8_t GKCartridgeGetRAMByte(struct gb_s* gb, const uint_fast32_t addr) {
+	const GKGameView* const view = gb->direct.priv;
+	return view->cart_ram[addr];
 }
 
-static void gb_cart_ram_write(struct gb_s* gb, const uint_fast32_t addr, const uint8_t val) {
-	const GKGameView* const p = gb->direct.priv;
-	p->cart_ram[addr] = val;
+static void GKCartridgeWriteRAM(struct gb_s* gb, const uint_fast32_t addr, const uint8_t val) {
+	const GKGameView* const view = gb->direct.priv;
+	view->cart_ram[addr] = val;
 }
 
-static void gb_error(struct gb_s* gb, const enum gb_error_e gb_err, const uint16_t val) {
-	const GKGameView* const p = gb->direct.priv;
+static void GKCartridgeError(struct gb_s* gb, const enum gb_error_e gb_err, const uint16_t val) {
+	const GKGameView* const view = gb->direct.priv;
 
-// 	switch(gb_err) {
-// 	case GB_INVALID_OPCODE:
-// 		/* We compensate for the post-increment in the __gb_step_cpu
-// 		 * function. */
-// 		fprintf(stdout, "Invalid opcode %#04x at PC: %#06x, SP: %#06x\n",
-// 			val,
-// 			gb->cpu_reg.pc - 1,
-// 			gb->cpu_reg.sp);
-// 		break;
-// 
-// 	/* Ignoring non fatal errors. */
-// 	case GB_INVALID_WRITE:
-// 	case GB_INVALID_READ:
-// 		return;
-// 
-// 	default:
-// 		printf("Unknown error");
-// 		break;
-// 	}
+	switch(gb_err) {
+	case GB_INVALID_OPCODE:
+		GKLog("Gamekid: Invalid opcode %#04x at PC: %#06x, SP: %#06x", val, gb->cpu_reg.pc - 1, gb->cpu_reg.sp);
+		break;
+
+	// Ignoring non fatal errors.
+	case GB_INVALID_WRITE:
+	case GB_INVALID_READ:
+		return;
+
+	default:
+		GKLog("Gamekid: Unknown error");
+		break;
+	}
+	
+	GKAppGoToLibrary(view->app);
 }
- 
-static void sliced_lcd_draw_line(struct gb_s* gb, const uint8_t pixels[160], const uint_fast8_t line) {
+
+#pragma mark -
+#pragma mark Rendering
+
+static const int GKDisplayPatterns[4][4][4] = {
+	{ // White
+		{1, 1, 1, 1},
+		{1, 1, 1, 1},
+		{1, 1, 1, 1},
+		{1, 1, 1, 1}
+	},
+	{ // Light Grey
+		{0, 1, 0, 1},
+		{1, 1, 1, 1},
+		{0, 1, 0, 1},
+		{1, 1, 1, 1}
+	},
+	{ // Dark Grey
+		{1, 0, 1, 0},
+		{0, 1, 0, 1},
+		{1, 0, 1, 0},
+		{0, 1, 0, 1}
+	},
+	{ // Black
+		{0, 0, 0, 0},
+		{0, 0, 0, 0},
+		{0, 0, 0, 0},
+		{0, 0, 0, 0}
+	}
+};
+
+static inline uint32_t swap(uint32_t n) {
+#if TARGET_PLAYDATE
+		uint32_t result;
+		__asm volatile ("rev %0, %1" : "=l" (result) : "l" (n));
+		return(result);
+#else
+		return ((n & 0xff000000) >> 24) | ((n & 0xff0000) >> 8) | ((n & 0xff00) << 8) | (n << 24);
+#endif
+}
+
+static void GKLCDDrawLineSliced(struct gb_s* gb, const uint8_t pixels[160], const uint_fast8_t line) {
 	#define INTERLACE_MULTIPLE 1.5
 	const uint32_t screen_x = GKFastDiv2(400 - 240); // Where it's going.
 	const uint32_t start_x = 11; // Bit to start on.
@@ -448,7 +432,7 @@ static void sliced_lcd_draw_line(struct gb_s* gb, const uint8_t pixels[160], con
 	playdate->graphics->markUpdatedRows(start_y, start_y);
 }
 
-static void fitted_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line) {
+static void GKLCDDrawLineFitted(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line) {
 	GKGameView* view = gb->direct.priv;
 	
 	const uint32_t screen_x = (400-(160*2))/2;
@@ -507,7 +491,7 @@ static void fitted_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], con
 	playdate->graphics->markUpdatedRows(line_one_sy, line_one_sy+1);
 }
 
-static void double_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line) {
+static void GKLCDDrawLineDoubled(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line) {
 	const uint32_t screen_x = GKFastDiv2(400-GKFastMult2(160));
 	const uint32_t start_x = GKFastMod32(screen_x);
 	const uint32_t line_offset = 12;
@@ -540,7 +524,7 @@ static void double_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], con
 	playdate->graphics->markUpdatedRows(start_y, start_y+1);
 }
 
-static void natural_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line) {
+static void GKLCDDrawLineNatural(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line) {
 	const uint32_t start_x = 24;
 	const uint32_t start_y = line + 48;
 	const uint32_t line_mod = GKFastMod4(line);
@@ -641,7 +625,7 @@ static void natural_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], co
 
 #pragma mark -
 
-static void updateJoypad(GKGameView* view) {
+static void GKGameViewUpdateJoypad(GKGameView* view) {
 	PDButtons buttons;
 	
 	// Get current state of Playdate buttons.
@@ -657,7 +641,7 @@ static void updateJoypad(GKGameView* view) {
 	view->gb.direct.joypad_bits.right = (buttons & kButtonRight) == 0;
 }
 
-static void updateCrank(GKGameView* view) {
+static void GKGameViewUpdateCrank(GKGameView* view) {
 	float angle = playdate->system->getCrankAngle();
 	int direction = 0; // 0 = not moving, 1 = clockwise, -1 = counter clockwise
 	
@@ -684,16 +668,16 @@ void GKGameViewSetScale(GKGameView* view, int scale) {
 	void* fn = NULL;
 	
 	if(scale == 0) {
-		fn = natural_lcd_draw_line;
+		fn = GKLCDDrawLineNatural;
 	}
 	else if(scale == 1) {
-		fn = fitted_lcd_draw_line;
+		fn = GKLCDDrawLineFitted;
 	}
 	else if(scale == 2) {
-		fn = sliced_lcd_draw_line;
+		fn = GKLCDDrawLineSliced;
 	}
 	else if(scale == 3) {
-		fn = double_lcd_draw_line;
+		fn = GKLCDDrawLineDoubled;
 	}
 	
 	if(fn != NULL) {
@@ -706,3 +690,5 @@ extern void GKGameViewSetInterlaced(GKGameView* view, bool enabled) {
 	view->interlace_enabled = enabled;
 	view->gb.direct.interlace = enabled;
 }
+
+#pragma mark -

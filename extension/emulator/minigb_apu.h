@@ -5,17 +5,16 @@
  * project is based on MiniGBS by Alex Baines: https://github.com/baines/MiniGBS
  */
 
-#pragma once
+#ifndef minigb_apu_h
+#define minigb_apu_h
 
 #include <stdint.h>
 
-#define AUDIO_SAMPLE_RATE	48000.0
-
-#define DMG_CLOCK_FREQ		4194304.0
-#define SCREEN_REFRESH_CYCLES	70224.0
-#define VERTICAL_SYNC		(DMG_CLOCK_FREQ/SCREEN_REFRESH_CYCLES)
-
-#define AUDIO_SAMPLES		((unsigned)(AUDIO_SAMPLE_RATE / VERTICAL_SYNC))
+#define AUDIO_SAMPLE_RATE	44100.0f
+#define DMG_CLOCK_FREQ 4194304.0f
+#define SCREEN_REFRESH_CYCLES	70224.0f
+#define VERTICAL_SYNC (DMG_CLOCK_FREQ/SCREEN_REFRESH_CYCLES)
+#define AUDIO_SAMPLES ((unsigned)(AUDIO_SAMPLE_RATE / VERTICAL_SYNC))
 
 /**
  * Fill allocated buffer "data" with "len" number of 32-bit floating point
@@ -39,4 +38,6 @@ void audio_write(const uint16_t addr, const uint8_t val);
 void audio_init(void);
 
 
-extern int playdate_audio_source_callback(void* context, int16_t* left, int16_t* right, int len);
+extern int GKAudioSourceCallback(void* context, int16_t* left, int16_t* right, int len);
+
+#endif

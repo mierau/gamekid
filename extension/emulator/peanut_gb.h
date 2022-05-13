@@ -100,8 +100,8 @@
 #define SERIAL_CYCLES		4096
 
 /* Calculating VSYNC. */
-#define DMG_CLOCK_FREQ		4194304.0
-#define SCREEN_REFRESH_CYCLES	70224.0
+#define DMG_CLOCK_FREQ		4194304.0f
+#define SCREEN_REFRESH_CYCLES	70224.0f
 #define VERTICAL_SYNC		(DMG_CLOCK_FREQ/SCREEN_REFRESH_CYCLES)
 
 /* SERIAL SC register masks. */
@@ -1243,7 +1243,7 @@ static int compare_sprites(const void *in1, const void *in2)
 
 void __gb_draw_line(struct gb_s *gb)
 {
-	static uint8_t pixels[160] = {0};
+	uint8_t pixels[160] = {0};
 
 	/* If LCD not initialised by front-end, don't render anything. */
 	if(gb->display.lcd_draw_line == NULL)
