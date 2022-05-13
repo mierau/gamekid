@@ -1,6 +1,6 @@
 # Gamekid
 A community built Game Boy emulator for [Playdate](https://play.date).  
-The emulator backend is provided by the equaly teeny [PeanutGB](https://github.com/deltabeard/Peanut-GB).
+The emulator backend is provided by the equally teeny [PeanutGB](https://github.com/deltabeard/Peanut-GB).
 
 ## Install
 1. [Download](https://github.com/mierau/gamekid/releases/) the latest version of Gamekid.
@@ -23,7 +23,7 @@ Start/Select: Move the crank to activate start/select buttons.
 Open the Playdate menu for scaling and interlacing options.
 
 ## Building
-1. Grab a copy of Playdate dev tools.
+1. Grab a copy of [Playdate SDK](https://play.date/dev/) for your system.
 2. Run `make` within the Gamekid folder. OR! grab yourself a copy of [Nova](https://nova.app) from [Panic](https://panic.com) (makers of the Playdate).
 
 ## Contributing
@@ -43,4 +43,4 @@ to be contributed back.
 - FPS optimizations
 
 ## License
-Matching the PeanutGB license here, which is MIT.
+Matching the [PeanutGB](https://github.com/deltabeard/Peanut-GB) license here, which is MIT.
