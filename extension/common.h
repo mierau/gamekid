@@ -16,10 +16,6 @@ extern PlaydateAPI* playdate;
 // Debug
 #define GKLog(...) playdate->system->logToConsole(__VA_ARGS__)
 
-// Memory
-#define GKAlloc(size) playdate->system->realloc(NULL, (size))
-#define GKFree(buffer) playdate->system->realloc((buffer), 0)
-
 // File
 #define GKFile SDFile
 #define kGKFileRead kFileRead
@@ -31,7 +27,6 @@ extern PlaydateAPI* playdate;
 #define kGKSeekEnd 2
 
 #define GKFileOpen(path, mode) playdate->file->open((path), (mode))
-
 #define GKFileClose(f) playdate->file->close((f))
 #define GKFileSeek(f, position, whence) playdate->file->seek((f), (position), (whence))
 #define GKFileRead(buffer, size, f) playdate->file->read((f), (buffer), (size))

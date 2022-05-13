@@ -24,7 +24,6 @@ typedef struct _GKApp {
 static int GKAppRunloop(void* context);
 static void libraryMenuItemCallback(void* context);
 static void scaleMenuItemCallback(void* context);
-static void crankMenuItemCallback(void* context);
 static void debugMenuItemCallback(void* context);
 
 GKAppScene GKAppGetCurrentScene(GKApp* app) {
@@ -61,14 +60,8 @@ void GKAppRun(void) {
 		"doubled"
 	};
 	
-	const char* crank_menu_items[] = {
-		"start/sel",
-		"position"
-	};
-	
 	app->library_menu = playdate->system->addMenuItem("Library", libraryMenuItemCallback, app);
 	app->scale_menu = playdate->system->addOptionsMenuItem("Scale", menu_items, 4, scaleMenuItemCallback, app);
-	// app->crank_menu = playdate->system->addOptionsMenuItem("Crank", crank_menu_items, 2, crankMenuItemCallback, app);
 	app->debug_menu = playdate->system->addCheckmarkMenuItem("Interlace", 1, debugMenuItemCallback, app);
 	
 	playdate->system->setMenuItemValue(app->scale_menu, 1);
@@ -148,11 +141,6 @@ static void libraryMenuItemCallback(void* context) {
 static void scaleMenuItemCallback(void* context) {
 	GKApp* app = (GKApp*)context;
 	GKGameViewSetScale(app->gameview, playdate->system->getMenuItemValue(app->scale_menu));
-}
-
-static void crankMenuItemCallback(void* context) {
-	GKApp* app = (GKApp*)context;
-	// GKAppGoToLibrary(app);
 }
 
 static void debugMenuItemCallback(void* context) {

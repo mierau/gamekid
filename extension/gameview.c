@@ -10,10 +10,11 @@
 #include "pd_api.h"
 #include "common.h"
 
-#define ENABLE_SOUND 0
+#define ENABLE_SOUND 1
 #define ENABLE_LCD 1
 #define PEANUT_GB_HIGH_LCD_ACCURACY 0
-#include "peanut_gb.h"
+#include "emulator/minigb_apu.h"
+#include "emulator/peanut_gb.h"
 
 // Emulator callbacks
 static uint8_t* read_rom_to_ram(const char* file_name);
@@ -91,6 +92,7 @@ typedef struct _GKGameView {
 	int selected_scale;
 	bool interlace_enabled;
 	uint32_t* current_frame;
+	SoundSource* sound_source;
 	
 	char* save_file_name;
 	
@@ -131,6 +133,11 @@ void GKGameViewDestroy(GKGameView* view) {
 #pragma mark -
 
 void GKGameViewReset(GKGameView* view) {
+	if(view->sound_source != NULL) {
+		playdate->sound->removeSource(view->sound_source);
+		view->sound_source = NULL;
+	}
+
 	if(view->cart_ram != NULL) {
 		free(view->cart_ram);
 		view->cart_ram = NULL;
@@ -145,6 +152,8 @@ void GKGameViewReset(GKGameView* view) {
 		free(view->save_file_name);
 		view->save_file_name = NULL;
 	}
+	
+	gb_reset(&view->gb);
 	
 	view->crank_previous = playdate->system->getCrankAngle();
 	view->clear_next_frame = true;
@@ -219,9 +228,14 @@ bool GKGameViewShow(GKGameView* view, const char* path) {
 		return false;
 	}
 	
-	/* Load Save File. */
+	// Load save file.
 	read_cart_ram_file(view->save_file_name, &view->cart_ram, gb_get_save_size(&view->gb));
 	
+	// Initialize sound.
+	view->sound_source = playdate->sound->addSource(playdate_audio_source_callback, NULL, 1);
+	audio_init();
+
+	// Initialize display.
 	void* lcd_func = NULL;
 	
 	if(view->selected_scale == 0) {
@@ -241,6 +255,7 @@ bool GKGameViewShow(GKGameView* view, const char* path) {
 	view->gb.display.lcd_draw_line = lcd_func;
 	view->gb.direct.frame_skip = 1;
 	view->gb.direct.interlace = view->interlace_enabled;
+
 	
 	// auto_assign_palette(&priv, gb_colour_hash(&gb));
 	
@@ -275,7 +290,7 @@ void GKGameViewUpdate(GKGameView* view, unsigned int dt) {
 	
 	// Tick the internal RTC every 1 second.
 	rtc_timer += dt;// target_speed_ms / fast_mode;
-	if(rtc_timer >= 1000) {
+	if(rtc_timer >= 200) {
 		rtc_timer = 0;
 		gb_tick_rtc(&view->gb);
 	}

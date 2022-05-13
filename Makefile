@@ -15,10 +15,11 @@ SRC = extension/main.c \
 			extension/app.c \
 			extension/lib/list.c \
 			extension/libraryview.c \
-			extension/gameview.c
+			extension/gameview.c \
+			extension/emulator/minigb_apu.c
 
 # List all user directories here
-UINCDIR = extension extension/lib
+UINCDIR = extension extension/lib extension/emulator
 
 # List user asm files
 UASRC = 
