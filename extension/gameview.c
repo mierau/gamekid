@@ -103,9 +103,6 @@ typedef struct _GKGameView {
 	uint8_t* cart_ram;
 	
 	int save_timer;
-	
-	uint32_t updated_row_top;
-	uint32_t updated_row_bottom;
 } GKGameView;
 
 static void updateJoypad(GKGameView* view);
@@ -232,6 +229,7 @@ bool GKGameViewShow(GKGameView* view, const char* path) {
 	read_cart_ram_file(view->save_file_name, &view->cart_ram, gb_get_save_size(&view->gb));
 	
 	// Initialize sound.
+	playdate->sound->channel->setVolume(playdate->sound->getDefaultChannel(), 0.2f);
 	view->sound_source = playdate->sound->addSource(playdate_audio_source_callback, NULL, 1);
 	audio_init();
 
@@ -284,13 +282,9 @@ void GKGameViewUpdate(GKGameView* view, unsigned int dt) {
 	// view->updated_row_bottom = 0;
 	gb_run_frame(&view->gb);
 	
-	// if(view->updated_row_top <= view->updated_row_bottom) {
-	// 	playdate->graphics->markUpdatedRows(view->updated_row_top, view->updated_row_bottom);
-	// }
-	
 	// Tick the internal RTC every 1 second.
 	rtc_timer += dt;// target_speed_ms / fast_mode;
-	if(rtc_timer >= 200) {
+	if(rtc_timer >= 1000) {
 		rtc_timer = 0;
 		gb_tick_rtc(&view->gb);
 	}
@@ -451,8 +445,6 @@ static void sliced_lcd_draw_line(struct gb_s* gb, const uint8_t pixels[160], con
 	}
 	*frame = swap(accumulator);
 	
-	// view->updated_row_top = GKMin(start_y, view->updated_row_top);
-	// view->updated_row_bottom = GKMax(start_y, view->updated_row_bottom);
 	playdate->graphics->markUpdatedRows(start_y, start_y);
 }
 
@@ -464,7 +456,7 @@ static void fitted_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], con
 	const uint32_t double_line = line * 2;
 	
 	// Screen Y is doubled then we remove every 6th line.
-	uint32_t line_one_sy = double_line - floor((float)double_line / 6.0);
+	uint32_t line_one_sy = double_line - floor((float)double_line / 6.0f);
 	uint32_t line_two_sy = line_one_sy + 1;
 	
 	bool skip_line_one = (double_line % 6 == 5);
@@ -545,8 +537,6 @@ static void double_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], con
 		accumulator = swap(*frame);
 	}
 	
-	// view->updated_row_top = GKMin(start_y, view->updated_row_top);
-	// view->updated_row_bottom = GKMax(start_y+1, view->updated_row_bottom);
 	playdate->graphics->markUpdatedRows(start_y, start_y+1);
 }
 
@@ -646,8 +636,6 @@ static void natural_lcd_draw_line(struct gb_s *gb, const uint8_t pixels[160], co
 	GKSetOrClearBitIf(GKDisplayPatterns[pixels[159] & 3][line_mod][3], 31 - GKFastMod32(23), accumulator);
 	*frame = swap(accumulator);
 	
-	// view->updated_row_top = GKMin(start_y, view->updated_row_top);
-	// view->updated_row_bottom = GKMax(start_y, view->updated_row_bottom);
 	playdate->graphics->markUpdatedRows(start_y, start_y);
 }
 
