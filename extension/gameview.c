@@ -21,9 +21,10 @@
 
 #include "emulator/peanut_gb.h"
 
-// Emulator
 static void GKGameViewUpdateJoypad(GKGameView* view);
 static void GKGameViewUpdateCrank(GKGameView* view);
+
+// Emulator
 static uint8_t* GKReadROMFile(const char* file_name);
 static void GKGameViewReadSaveFile(const char* save_file_name, uint8_t** dest, const size_t len);
 static uint8_t GKCartridgeGetROMByte(struct gb_s* gb, const uint_fast32_t addr);
@@ -78,6 +79,35 @@ void GKGameViewDestroy(GKGameView* view) {
 }
 
 #pragma mark -
+
+void GKGameViewSetScale(GKGameView* view, int scale) {
+	view->selected_scale = scale;
+
+	void* fn = NULL;
+	
+	if(scale == 0) {
+		fn = GKLCDDrawLineNatural;
+	}
+	else if(scale == 1) {
+		fn = GKLCDDrawLineFitted;
+	}
+	else if(scale == 2) {
+		fn = GKLCDDrawLineSliced;
+	}
+	else if(scale == 3) {
+		fn = GKLCDDrawLineDoubled;
+	}
+	
+	if(fn != NULL) {
+		view->gb.display.lcd_draw_line = fn;
+		view->clear_next_frame = true;
+	}
+}
+
+void GKGameViewSetInterlaced(GKGameView* view, bool enabled) {
+	view->interlace_enabled = enabled;
+	view->gb.direct.interlace = enabled;
+}
 
 void GKGameViewReset(GKGameView* view) {
 #if ENABLE_SOUND
@@ -266,6 +296,43 @@ void GKGameViewUpdate(GKGameView* view, unsigned int dt) {
 // #if TARGET_PLAYDATE
 	// playdate->system->drawFPS(5, 5);
 // #endif
+}
+
+static void GKGameViewUpdateJoypad(GKGameView* view) {
+	PDButtons buttons;
+	
+	// Get current state of Playdate buttons.
+	playdate->system->getButtonState(&buttons, NULL, NULL);
+	
+	// Map Playdate button states to Gamekid's.
+	view->gb.direct.joypad_bits.b = (buttons & kButtonB) == 0;
+	view->gb.direct.joypad_bits.a = (buttons & kButtonA) == 0;
+	
+	view->gb.direct.joypad_bits.up = (buttons & kButtonUp) == 0;
+	view->gb.direct.joypad_bits.down = (buttons & kButtonDown) == 0;
+	view->gb.direct.joypad_bits.left = (buttons & kButtonLeft) == 0;
+	view->gb.direct.joypad_bits.right = (buttons & kButtonRight) == 0;
+}
+
+static void GKGameViewUpdateCrank(GKGameView* view) {
+	float angle = playdate->system->getCrankAngle();
+	int direction = 0; // 0 = not moving, 1 = clockwise, -1 = counter clockwise
+	
+	if(angle < (view->crank_previous - 3)) {
+		direction = -1;
+	}
+	else if(angle > (view->crank_previous + 3)) {
+		direction = 1;
+	}
+	else {
+		view->crank_previous = angle;
+		return;
+	}
+	
+	view->gb.direct.joypad_bits.select = (direction == 1);
+	view->gb.direct.joypad_bits.start = (direction == -1);
+	
+	view->crank_previous = angle;
 }
 
 #pragma mark -
@@ -625,70 +692,3 @@ static void GKLCDDrawLineNatural(struct gb_s *gb, const uint8_t pixels[160], con
 
 #pragma mark -
 
-static void GKGameViewUpdateJoypad(GKGameView* view) {
-	PDButtons buttons;
-	
-	// Get current state of Playdate buttons.
-	playdate->system->getButtonState(&buttons, NULL, NULL);
-	
-	// Map Playdate button states to Gamekid's.
-	view->gb.direct.joypad_bits.b = (buttons & kButtonB) == 0;
-	view->gb.direct.joypad_bits.a = (buttons & kButtonA) == 0;
-	
-	view->gb.direct.joypad_bits.up = (buttons & kButtonUp) == 0;
-	view->gb.direct.joypad_bits.down = (buttons & kButtonDown) == 0;
-	view->gb.direct.joypad_bits.left = (buttons & kButtonLeft) == 0;
-	view->gb.direct.joypad_bits.right = (buttons & kButtonRight) == 0;
-}
-
-static void GKGameViewUpdateCrank(GKGameView* view) {
-	float angle = playdate->system->getCrankAngle();
-	int direction = 0; // 0 = not moving, 1 = clockwise, -1 = counter clockwise
-	
-	if(angle < (view->crank_previous - 3)) {
-		direction = -1;
-	}
-	else if(angle > (view->crank_previous + 3)) {
-		direction = 1;
-	}
-	else {
-		view->crank_previous = angle;
-		return;
-	}
-	
-	view->gb.direct.joypad_bits.select = (direction == 1);
-	view->gb.direct.joypad_bits.start = (direction == -1);
-	
-	view->crank_previous = angle;
-}
-
-void GKGameViewSetScale(GKGameView* view, int scale) {
-	view->selected_scale = scale;
-
-	void* fn = NULL;
-	
-	if(scale == 0) {
-		fn = GKLCDDrawLineNatural;
-	}
-	else if(scale == 1) {
-		fn = GKLCDDrawLineFitted;
-	}
-	else if(scale == 2) {
-		fn = GKLCDDrawLineSliced;
-	}
-	else if(scale == 3) {
-		fn = GKLCDDrawLineDoubled;
-	}
-	
-	if(fn != NULL) {
-		view->gb.display.lcd_draw_line = fn;
-		view->clear_next_frame = true;
-	}
-}
-
-extern void GKGameViewSetInterlaced(GKGameView* view, bool enabled) {
-	view->interlace_enabled = enabled;
-	view->gb.direct.interlace = enabled;
-}
-
-#pragma mark -

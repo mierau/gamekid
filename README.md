@@ -1,6 +1,7 @@
 # Gamekid
 A community built Game Boy emulator for [Playdate](https://play.date).  
-The emulator backend is provided by the equally teeny [PeanutGB](https://github.com/deltabeard/Peanut-GB).
+The emulator backend is provided by the equally teeny [PeanutGB](https://github.com/deltabeard/Peanut-GB).  
+This is still very much a work in progress. FPS is not yet where we want it to be but it'll get there in time. Join in, help us out! :)
 
 ## Install
 1. [Download](https://github.com/mierau/gamekid/releases/) the latest version of Gamekid.
@@ -32,10 +33,7 @@ Connect with me on Twitter [@dmierau](https://twitter.com/dmierau)—I'm pretty 
 Simply make pull requests and I'll look over changes and merge.
 
 ## PeanutGB
-Though I had originally built Gamekid with my own emulator, it felt unnecessary for the world to
-maintain yet another Game Boy emulator. So, I selected PeanutGB for it being written in C already
-and its portable implementation. That said, I would like any improvements made to that library
-to be contributed back.
+Gamekid sits atop the wonderfully compact [PeanutGB](https://github.com/deltabeard/Peanut-GB) emulator backend. This emulator is designed for efficiency over accuracy.
 
 ## TODO
 - Sound support
