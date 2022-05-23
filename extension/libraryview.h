@@ -9,10 +9,10 @@
 typedef struct _GKApp GKApp;
 typedef struct _GKLibraryView GKLibraryView;
 
-extern GKLibraryView* GKLibraryViewCreate(GKApp* app);
-extern void GKLibraryViewDestroy(GKLibraryView* view);
-extern void GKLibraryViewShow(GKLibraryView* view);
-extern void GKLibraryViewHide(GKLibraryView* view);
-extern void GKLibraryViewUpdate(GKLibraryView* view, unsigned int dt);
+GKLibraryView* GKLibraryViewCreate(GKApp* app);
+void GKLibraryViewDestroy(GKLibraryView* view);
+void GKLibraryViewShow(GKLibraryView* view);
+void GKLibraryViewHide(GKLibraryView* view);
+void GKLibraryViewUpdate(GKLibraryView* view, unsigned int dt);
 
 #endif

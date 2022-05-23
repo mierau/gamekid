@@ -16,13 +16,13 @@ typedef struct _List {
 	struct _ListNode* first;
 } List;
 
-extern List* ListCreate(void);
-extern void ListDestroy(List* list);
-extern void ListDestroyAll(List* list);
-extern void ListAppend(List* list, void* data);
-extern void ListInsert(List* list, int index, void* data);
-extern void* ListGet(List* list, int index);
-extern void* ListRemove(List* list, int index);
-extern int ListGetLength(List* list);
+List* ListCreate(void);
+void ListDestroy(List* list);
+void ListDestroyAll(List* list);
+void ListAppend(List* list, void* data);
+void ListInsert(List* list, int index, void* data);
+void* ListGet(List* list, int index);
+void* ListRemove(List* list, int index);
+int ListGetLength(List* list);
 
 #endif

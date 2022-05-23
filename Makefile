@@ -1,6 +1,8 @@
 HEAP_SIZE      = 8388208
 STACK_SIZE     = 61800
 
+DEBUG = 0
+
 PRODUCT = gamekid.pdx
 
 # Locate the SDK
@@ -10,23 +12,41 @@ VPATH += extension
 VPATH += extension/lib
 
 # List C source files here
-SRC = extension/main.c \
-			extension/app.c \
-			extension/lib/utility.c \
-			extension/lib/list.c \
-			extension/libraryview.c \
-			extension/gameview.c \
-			extension/emulator/gb/minigb_apu.c \
-			extension/emulator/adapter_gb.c
+MAIN_SRC = \
+extension/main.c \
+extension/app.c \
+extension/lib/utility.c \
+extension/lib/list.c \
+extension/libraryview.c \
+extension/gameview.c \
+
+GAMEBOY_SRC = \
+extension/emulator/gb/minigb_apu.c \
+extension/emulator/adapter_gb.c
+
+GAMEWATCH_SRC = \
+extension/emulator/gw/cpus/sm500op.c \
+extension/emulator/gw/cpus/sm500core.c \
+extension/emulator/gw/cpus/sm510op.c \
+extension/emulator/gw/cpus/sm510base.c \
+extension/emulator/gw/cpus/sm510core.c \
+extension/emulator/gw/cpus/sm511core.c \
+extension/emulator/gw/cpus/sm5acore.c \
+extension/emulator/gw/gw_sys/gw_graphic.c \
+extension/emulator/gw/gw_sys/gw_romloader.c \
+extension/emulator/gw/gw_sys/gw_system.c \
+extension/emulator/adapter_gw.c
+
+SRC = $(MAIN_SRC) $(GAMEBOY_SRC) $(GAMEWATCH_SRC)
 
 # List all user directories here
-UINCDIR = extension extension/lib extension/emulator
+UINCDIR = extension extension/lib extension/emulator extension/emulator/gw/cpus extension/emulator/gw/gw_sys
 
 # List user asm files
 UASRC = 
 
 # List all user C define here, like -D_DEBUG=1
-UDEFS = 
+UDEFS = -DGAMEBOY_ENABLED=1 -DGAMEWATCH_ENABLED=1
 
 # Define ASM defines here
 UADEFS = 

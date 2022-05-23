@@ -15,14 +15,14 @@ enum {
 };
 typedef unsigned char GKAppScene;
 
-extern void GKAppRun(void);
-extern void GKAppDestroy(GKApp* app);
+void GKAppRun(void);
+void GKAppDestroy(GKApp* app);
 
-extern GKAppScene GKAppGetCurrentScene(GKApp* app);
-extern void GKAppGoToGame(GKApp* app, const char* path);
-extern void GKAppGoToLibrary(GKApp* app);
+GKAppScene GKAppGetCurrentScene(GKApp* app);
+void GKAppGoToGame(GKApp* app, const char* path);
+void GKAppGoToLibrary(GKApp* app);
 
-extern void GKAppSetFPSEnabled(bool enabled);
-extern bool GKAppGetFPSEnabled(void);
+void GKAppSetFPSEnabled(bool enabled);
+bool GKAppGetFPSEnabled(void);
 
 #endif

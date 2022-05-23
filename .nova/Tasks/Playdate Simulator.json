@@ -6,5 +6,6 @@
   "extensionTemplate" : "simulator",
   "extensionValues" : {
     "playdate.build-type" : "make"
-  }
+  },
+  "openLogOnRun" : "start"
 }

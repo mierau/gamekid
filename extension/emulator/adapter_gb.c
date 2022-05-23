@@ -34,7 +34,6 @@ typedef struct _GKGameBoyAdapter {
 	int selected_scale;
 	int save_timer;
 
-	bool renderedFrame;
 	bool clear_next_frame;
 	bool interlace_enabled;
 } GKGameBoyAdapter;

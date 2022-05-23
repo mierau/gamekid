@@ -32,6 +32,6 @@ void audio_write(const uint16_t addr, const uint8_t val);
 void audio_init(void);
 
 
-extern int GKAudioSourceCallback(void* context, int16_t* left, int16_t* right, int len);
+int GKAudioSourceCallback(void* context, int16_t* left, int16_t* right, int len);
 
 #endif

@@ -18,6 +18,14 @@ const char* GKGetFilename(const char* path, int* len) {
 	return path;
 }
 
+const char* GKGetFileExtension(const char* path) {
+	char* dot = strrchr(path, '.');
+	if(dot == NULL || dot == path) {
+		return NULL;
+	}
+	return dot;
+}
+
 unsigned char* GKReadFileContents(const char* path) {
 	GKFile* rom_file = GKFileOpen(path, kGKFileReadData);
 	size_t rom_size;

@@ -84,10 +84,21 @@ void listFilesCallback(const char* filename, void* context) {
 	bool file_allowed = false;
 	
 	if(file_extension != NULL && file_extension != filename) {
-		// Allow GB and GBC files.
-		if(strcmp(file_extension, ".gb") == 0 || strcmp(file_extension, ".GB") == 0) {
+#if GAMEBOY_ENABLED
+		// Allow Game Boy files.
+		if(strcasecmp(file_extension, ".gb") == 0) {
 			file_allowed = true;
 		}
+		else
+#endif
+#if GAMEWATCH_ENABLED
+		// Allow Game & Watch files.
+		if(strcasecmp(file_extension, ".mgw") == 0) {
+			file_allowed = true;
+		}
+		else
+#endif
+		{}
 	}
 	
 	if(!file_allowed) {

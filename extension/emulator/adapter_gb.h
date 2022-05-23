@@ -5,9 +5,9 @@
 
 typedef struct _GKGameBoyAdapter GKGameBoyAdapter;
 
-extern GKGameBoyAdapter* GKGameBoyAdapterCreate(void);
-extern void GKGameBoyAdapterDestroy(GKGameBoyAdapter* adapter);
-extern bool GKGameBoyAdapterLoad(GKGameBoyAdapter* adapter, const char* path);
-extern void GKGameBoyAdapterUpdate(GKGameBoyAdapter* adapter, unsigned int dt);
+GKGameBoyAdapter* GKGameBoyAdapterCreate(void);
+void GKGameBoyAdapterDestroy(GKGameBoyAdapter* adapter);
+bool GKGameBoyAdapterLoad(GKGameBoyAdapter* adapter, const char* path);
+void GKGameBoyAdapterUpdate(GKGameBoyAdapter* adapter, unsigned int dt);
 
 #endif
