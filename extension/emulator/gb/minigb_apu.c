@@ -572,7 +572,7 @@ int GKAudioSourceCallback(void* context, int16_t* left, int16_t* right, int len)
 	update_square(left, right, 0, len);
 	update_square(left, right, 1, len);
 	update_wave(left, right, len);
-	// update_noise(left, right, len);
+	update_noise(left, right, len);
 	
 	for(int i = 0; i < len; ++i) {
 		if(left[i] != 0 || right[i] != 0) return 1;

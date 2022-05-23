@@ -14,17 +14,11 @@ typedef struct _GKApp {
 	GKAppScene scene;
 	GKGameView* gameview;
 	GKLibraryView* libraryview;
-	PDMenuItem* library_menu;
-	PDMenuItem* scale_menu;
-	PDMenuItem* crank_menu;
-	PDMenuItem* debug_menu;
 	unsigned int last_time;
+	bool display_fps;
 } GKApp;
 
 static int GKAppRunloop(void* context);
-static void libraryMenuItemCallback(void* context);
-static void scaleMenuItemCallback(void* context);
-static void debugMenuItemCallback(void* context);
 
 GKAppScene GKAppGetCurrentScene(GKApp* app) {
 	return app->scene;
@@ -41,43 +35,19 @@ void GKAppRun(void) {
 		playdate->file->mkdir("saves");
 	}
 
-	GKApp* app = malloc(sizeof(GKApp));
-	memset(app, 0x00, sizeof(GKApp));
-	
+	app = malloc(sizeof(GKApp));
+	memset(app, 0, sizeof(GKApp));
 	app->libraryview = GKLibraryViewCreate(app);
-	app->gameview = GKGameViewCreate(app);
+	app->gameview = GKGameViewCreate();
 	app->scene = kGKAppSceneBooting;
-	
-	playdate->display->setRefreshRate(60);
-	playdate->system->setUpdateCallback(GKAppRunloop, app);
-	
 	app->last_time = playdate->system->getCurrentTimeMilliseconds();
-	
-	const char* menu_items[] = {
-		"natural",
-		"fitted",
-		"sliced",
-		"doubled"
-	};
-	
-	app->library_menu = playdate->system->addMenuItem("Library", libraryMenuItemCallback, app);
-	app->scale_menu = playdate->system->addOptionsMenuItem("Scale", menu_items, 4, scaleMenuItemCallback, app);
-	app->debug_menu = playdate->system->addCheckmarkMenuItem("Interlace", 1, debugMenuItemCallback, app);
-	
-	playdate->system->setMenuItemValue(app->scale_menu, 1);
+		
+	playdate->display->setRefreshRate(50);
+	playdate->system->setUpdateCallback(GKAppRunloop, app);
 }
 
 void GKAppDestroy(GKApp* app) {
 	playdate->system->setUpdateCallback(NULL, NULL);
-	if(app->library_menu != NULL) {
-		playdate->system->removeMenuItem(app->library_menu);
-	}
-	if(app->scale_menu != NULL) {
-		playdate->system->removeMenuItem(app->scale_menu);
-	}
-	if(app->crank_menu != NULL) {
-		playdate->system->removeMenuItem(app->crank_menu);
-	}
 	free(app);
 }
 
@@ -86,6 +56,10 @@ void GKAppDestroy(GKApp* app) {
 void GKAppGoToGame(GKApp* app, const char* path) {
 	if(app->scene == kGKAppSceneGame) {
 		return;
+	}
+	
+	if(app->scene == kGKAppSceneLibrary) {
+		GKLibraryViewHide(app->libraryview);
 	}
 	
 	app->scene = kGKAppSceneGame;
@@ -100,8 +74,7 @@ void GKAppGoToLibrary(GKApp* app) {
 	}
 	
 	if(app->scene == kGKAppSceneGame) {
-		GKGameViewSave(app->gameview);
-		GKGameViewReset(app->gameview);
+		GKGameViewHide(app->gameview);
 	}
 	
 	app->scene = kGKAppSceneLibrary;
@@ -125,25 +98,22 @@ static int GKAppRunloop(void* context) {
 		else if(app->scene == kGKAppSceneLibrary) {
 			GKLibraryViewUpdate(app->libraryview, dt);
 		}
-		return 1;
 	}
-	
-	GKGameViewUpdate(app->gameview, dt);
+	else {
+		GKGameViewUpdate(app->gameview, dt);
+	}
+
+	if(app->display_fps) {
+		playdate->system->drawFPS(380, 5);
+	}
 	
 	return 1;
 }
 
-static void libraryMenuItemCallback(void* context) {
-	GKApp* app = (GKApp*)context;
-	GKAppGoToLibrary(app);
+void GKAppSetFPSEnabled(bool enabled) {
+	app->display_fps = enabled;
 }
 
-static void scaleMenuItemCallback(void* context) {
-	GKApp* app = (GKApp*)context;
-	GKGameViewSetScale(app->gameview, playdate->system->getMenuItemValue(app->scale_menu));
-}
-
-static void debugMenuItemCallback(void* context) {
-	GKApp* app = (GKApp*)context;
-	GKGameViewSetInterlaced(app->gameview, playdate->system->getMenuItemValue(app->debug_menu));
+bool GKAppGetFPSEnabled(void) {
+	return app->display_fps;
 }

@@ -16,7 +16,8 @@ SRC = extension/main.c \
 			extension/lib/list.c \
 			extension/libraryview.c \
 			extension/gameview.c \
-			extension/emulator/minigb_apu.c
+			extension/emulator/gb/minigb_apu.c \
+			extension/emulator/adapter_gb.c
 
 # List all user directories here
 UINCDIR = extension extension/lib extension/emulator

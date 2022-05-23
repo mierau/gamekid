@@ -5,6 +5,7 @@
 #include "app.h"
 
 PlaydateAPI* playdate = NULL;
+GKApp* app = NULL;
 
 int eventHandler(PlaydateAPI* pd, PDSystemEvent event, uint32_t arg) {
   if(event == kEventInit) {

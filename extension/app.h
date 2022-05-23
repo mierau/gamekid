@@ -22,4 +22,7 @@ extern GKAppScene GKAppGetCurrentScene(GKApp* app);
 extern void GKAppGoToGame(GKApp* app, const char* path);
 extern void GKAppGoToLibrary(GKApp* app);
 
+extern void GKAppSetFPSEnabled(bool enabled);
+extern bool GKAppGetFPSEnabled(void);
+
 #endif

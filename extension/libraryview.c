@@ -21,8 +21,10 @@ typedef struct _GKLibraryView {
 	uint32_t keyrepeat_timer;
 	SamplePlayer* up_sound;
 	SamplePlayer* down_sound;
+	PDMenuItem* fps_menu;
 } GKLibraryView;
 
+static void menu_item_fps(void* context);
 
 GKLibraryView* GKLibraryViewCreate(GKApp* app) {
 	GKLibraryView* view = malloc(sizeof(GKLibraryView));
@@ -106,7 +108,23 @@ void GKLibraryViewShow(GKLibraryView* view) {
 	view->scroll_y = 0;
 	view->selection = 0;
 	
+	if(view->fps_menu == NULL) {
+		view->fps_menu = playdate->system->addCheckmarkMenuItem("FPS", GKAppGetFPSEnabled(), menu_item_fps, view);
+	}
+	
 	playdate->file->listfiles("/games", listFilesCallback, view);
+}
+
+void GKLibraryViewHide(GKLibraryView* view) {
+	if(view->fps_menu != NULL) {
+		playdate->system->removeMenuItem(view->fps_menu);
+		view->fps_menu = NULL;
+	}
+}
+
+static void menu_item_fps(void* context) {
+	GKLibraryView* view = (GKLibraryView*)context;
+	GKAppSetFPSEnabled(playdate->system->getMenuItemValue(view->fps_menu));
 }
 
 #define LIST_ROW_HEIGHT 36

@@ -6,12 +6,14 @@
 
 #include <string.h>
 #include "pd_api.h"
+#include "app.h"
 
 //#define GK_FORCEINLINE inline __attribute__((always_inline))
 #define GK_FORCEINLINE __attribute__((always_inline)) inline
 
 // Playdate extras
 extern PlaydateAPI* playdate;
+extern GKApp* app;
 
 // Debug
 #define GKLog(...) playdate->system->logToConsole(__VA_ARGS__)
