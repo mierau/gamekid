@@ -2,6 +2,7 @@
 #define adapter_gb_h
 
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef struct _GKGameBoyAdapter GKGameBoyAdapter;
 

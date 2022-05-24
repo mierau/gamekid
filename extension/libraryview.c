@@ -91,13 +91,6 @@ void listFilesCallback(const char* filename, void* context) {
 		}
 		else
 #endif
-#if GAMEWATCH_ENABLED
-		// Allow Game & Watch files.
-		if(strcasecmp(file_extension, ".mgw") == 0) {
-			file_allowed = true;
-		}
-		else
-#endif
 		{}
 	}
 	

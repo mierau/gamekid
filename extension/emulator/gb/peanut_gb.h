@@ -453,8 +453,7 @@ struct gb_s
 		 * \param line		Line to draw pixels on. This is
 		 * guaranteed to be between 0-144 inclusive.
 		 */
-		void (*lcd_draw_line)(struct gb_s *gb,
-				const uint8_t *pixels,
+		void (*lcd_line_changed)(struct gb_s *gb,
 				const uint_fast8_t line);
 
 		/* Palettes */
@@ -467,6 +466,14 @@ struct gb_s
 		/* Only support 30fps frame skip. */
 		unsigned frame_skip_count : 1;
 		unsigned interlace_count : 1;
+		
+		/* Playdate custom implementation */
+		unsigned back_fb_enabled : 1;
+		
+		uint8_t front_fb[LCD_HEIGHT][LCD_WIDTH];
+		uint8_t back_fb[LCD_HEIGHT][LCD_WIDTH];
+		uint32_t changed_rows[LCD_HEIGHT];
+		uint32_t changed_row_count;
 	} display;
 
 	/**
@@ -1243,12 +1250,6 @@ static int compare_sprites(const void *in1, const void *in2)
 
 void __gb_draw_line(struct gb_s *gb)
 {
-	uint8_t pixels[160] = {0};
-
-	/* If LCD not initialised by front-end, don't render anything. */
-	if(gb->display.lcd_draw_line == NULL)
-		return;
-
 	if(gb->direct.frame_skip && !gb->display.frame_skip_count)
 		return;
 
@@ -1270,6 +1271,11 @@ void __gb_draw_line(struct gb_s *gb)
 			return;
 		}
 	}
+	
+	uint8_t* front_pixels = &gb->display.front_fb[gb->gb_reg.LY][0];
+	uint8_t* back_pixels = &gb->display.back_fb[gb->gb_reg.LY][0];
+	uint8_t* pixels = gb->display.back_fb_enabled ? back_pixels : front_pixels;
+	uint8_t pixel = 0;
 
 	/* If background is enabled, draw it. */
 	if(gb->gb_reg.LCDC & LCDC_BG_ENABLE)
@@ -1337,8 +1343,9 @@ void __gb_draw_line(struct gb_s *gb)
 
 			/* copy background */
 			uint8_t c = (t1 & 0x1) | ((t2 & 0x1) << 1);
-			pixels[disp_x] = gb->display.bg_palette[c];
-			pixels[disp_x] |= LCD_PALETTE_BG;
+			pixel = gb->display.bg_palette[c];
+			pixel |= LCD_PALETTE_BG;
+			pixels[disp_x] = pixel;
 			t1 = t1 >> 1;
 			t2 = t2 >> 1;
 			px++;
@@ -1400,8 +1407,9 @@ void __gb_draw_line(struct gb_s *gb)
 
 			// copy window
 			uint8_t c = (t1 & 0x1) | ((t2 & 0x1) << 1);
-			pixels[disp_x] = gb->display.bg_palette[c];
-			pixels[disp_x] |= LCD_PALETTE_BG;
+			pixel = gb->display.bg_palette[c];
+			pixel |= LCD_PALETTE_BG;
+			pixels[disp_x] = pixel;
 			t1 = t1 >> 1;
 			t2 = t2 >> 1;
 			px++;
@@ -1535,13 +1543,14 @@ void __gb_draw_line(struct gb_s *gb)
 #endif
 				{
 					/* Set pixel colour. */
-					pixels[disp_x] = (OF & OBJ_PALETTE)
+					pixel = (OF & OBJ_PALETTE)
 							 ? gb->display.sp_palette[c + 4]
 							 : gb->display.sp_palette[c];
 					/* Set pixel palette (OBJ0 or OBJ1). */
-					pixels[disp_x] |= (OF & OBJ_PALETTE);
+					pixel |= (OF & OBJ_PALETTE);
 					/* Deselect BG palette. */
-					pixels[disp_x] &= ~LCD_PALETTE_BG;
+					pixel &= ~LCD_PALETTE_BG;
+					pixels[disp_x] = pixel;
 				}
 
 				t1 = t1 >> 1;
@@ -1550,7 +1559,11 @@ void __gb_draw_line(struct gb_s *gb)
 		}
 	}
 
-	gb->display.lcd_draw_line(gb, pixels, gb->gb_reg.LY);
+	/* If LCD not initialised by front-end, don't render anything. */
+	if(memcmp(front_pixels, back_pixels, LCD_WIDTH) != 0) {
+		gb->display.changed_rows[gb->gb_reg.LY] = 1;
+		gb->display.changed_row_count++;
+	}
 }
 #endif
 
@@ -3575,6 +3588,13 @@ void __gb_step_cpu(struct gb_s *gb)
 				gb->display.interlace_count =
 					!gb->display.interlace_count;
 			}
+			
+			if(!gb->direct.frame_skip ||
+				 !gb->display.frame_skip_count)
+			{
+					gb->display.back_fb_enabled =
+							!gb->display.back_fb_enabled;
+			}
 
 #endif
 		}
@@ -3618,7 +3638,10 @@ void __gb_step_cpu(struct gb_s *gb)
 void gb_run_frame(struct gb_s *gb)
 {
 	gb->gb_frame = 0;
-
+	if(gb->display.changed_row_count > 0) {
+		memset(gb->display.changed_rows, 0, sizeof(gb->display.changed_rows));
+	}
+	gb->display.changed_row_count = 0;
 	while(!gb->gb_frame)
 		__gb_step_cpu(gb);
 }
@@ -3802,7 +3825,7 @@ enum gb_init_error_e gb_init(struct gb_s *gb,
 	gb->num_ram_banks = num_ram_banks[gb->gb_rom_read(gb, ram_size_location)];
 
 	gb->lcd_blank = 0;
-	gb->display.lcd_draw_line = NULL;
+	gb->display.lcd_line_changed = NULL;
 
 	gb_reset(gb);
 
@@ -3842,11 +3865,10 @@ const char* gb_get_rom_name(struct gb_s* gb, char *title_str)
 
 #if ENABLE_LCD
 void gb_init_lcd(struct gb_s *gb,
-		void (*lcd_draw_line)(struct gb_s *gb,
-			const uint8_t *pixels,
+		void (*lcd_line_changed)(struct gb_s *gb,
 			const uint_fast8_t line))
 {
-	gb->display.lcd_draw_line = lcd_draw_line;
+	gb->display.lcd_line_changed = lcd_line_changed;
 
 	gb->direct.interlace = 0;
 	gb->display.interlace_count = 0;
@@ -3855,6 +3877,11 @@ void gb_init_lcd(struct gb_s *gb,
 
 	gb->display.window_clear = 0;
 	gb->display.WY = 0;
+	
+	gb->display.back_fb_enabled = 0;
+	
+	memset(gb->display.front_fb, 0, sizeof(gb->display.front_fb));
+	memset(gb->display.back_fb, 0, sizeof(gb->display.back_fb));
 
 	return;
 }

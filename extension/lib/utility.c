@@ -26,13 +26,14 @@ const char* GKGetFileExtension(const char* path) {
 	return dot;
 }
 
-unsigned char* GKReadFileContents(const char* path) {
+unsigned char* GKReadFileContents(const char* path, size_t* out_len) {
 	GKFile* rom_file = GKFileOpen(path, kGKFileReadData);
 	size_t rom_size;
 	unsigned char* rom = NULL;
 	
-	if(rom_file == NULL)
+	if(rom_file == NULL) {
 		return NULL;
+	}
 	
 	GKFileSeek(rom_file, 0, kGKSeekEnd);
 	rom_size = GKFileTell(rom_file);
@@ -46,5 +47,10 @@ unsigned char* GKReadFileContents(const char* path) {
 	}
 	
 	GKFileClose(rom_file);
+	
+	if(out_len != NULL) {
+		*out_len = rom_size;
+	}
+	
 	return rom;
 }

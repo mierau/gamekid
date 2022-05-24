@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <math.h>
 
-#define ENABLE_SOUND 1
+#define ENABLE_SOUND 0
 #define ENABLE_LCD 1
 #define PEANUT_GB_HIGH_LCD_ACCURACY 0
 
@@ -28,7 +28,6 @@ typedef struct _GKGameBoyAdapter {
 #endif
 	PDMenuItem* scale_menu;
 	PDMenuItem* interlace_menu;
-
 	
 	float crank_previous;
 	int selected_scale;
@@ -51,10 +50,9 @@ static uint8_t read_rom_byte(struct gb_s* gb, const uint_fast32_t addr);
 static uint8_t read_ram_byte(struct gb_s* gb, const uint_fast32_t addr);
 static void write_ram_byte(struct gb_s* gb, const uint_fast32_t addr, const uint8_t val);
 static void error(struct gb_s* gb, const enum gb_error_e gb_err, const uint16_t val);
-static void lcd_draw_line_sliced(struct gb_s* gb, const uint8_t pixels[160], const uint_fast8_t line);
-static void lcd_draw_line_fitted(struct gb_s* gb, const uint8_t pixels[160], const uint_fast8_t line);
-static void lcd_draw_line_doubled(struct gb_s* gb, const uint8_t pixels[160], const uint_fast8_t line);
-static void lcd_draw_line_natural(struct gb_s* gb, const uint8_t pixels[160], const uint_fast8_t line);
+static void update_display_natural(GKGameBoyAdapter* adapter);
+static void update_display_doubled(GKGameBoyAdapter* adapter);
+static void update_display_fitted(GKGameBoyAdapter* adapter);
 
 #pragma mark -
 
@@ -65,7 +63,7 @@ GKGameBoyAdapter* GKGameBoyAdapterCreate(void) {
 	adapter->crank_previous = playdate->system->getCrankAngle();
 	adapter->clear_next_frame = true;
 	adapter->selected_scale = 1;
-	adapter->interlace_enabled = true;
+	adapter->interlace_enabled = false;
 
 	return adapter;
 }
@@ -78,6 +76,7 @@ void GKGameBoyAdapterDestroy(GKGameBoyAdapter* adapter) {
 }
 
 bool GKGameBoyAdapterLoad(GKGameBoyAdapter* adapter, const char* path) {
+	memset(&adapter->gb, 0, sizeof(struct gb_s));
 	adapter->clear_next_frame = true;
 	
 	enum gb_init_error_e gb_ret;
@@ -91,7 +90,7 @@ bool GKGameBoyAdapterLoad(GKGameBoyAdapter* adapter, const char* path) {
 	reset(adapter);
 	
 	// Read ROM into memory.
-	if((adapter->rom = GKReadFileContents(path)) == NULL) {
+	if((adapter->rom = GKReadFileContents(path, NULL)) == NULL) {
 		GKLog("RAM READ ERROR %d\n", __LINE__);
 		return false;
 	}
@@ -148,23 +147,7 @@ bool GKGameBoyAdapterLoad(GKGameBoyAdapter* adapter, const char* path) {
 #endif
 
 	// Initialize display.
-	void* lcd_func = NULL;
-	
-	if(adapter->selected_scale == 0) {
-		lcd_func = lcd_draw_line_natural;
-	}
-	else if(adapter->selected_scale == 1) {
-		lcd_func = lcd_draw_line_fitted;
-	}
-	else if(adapter->selected_scale == 2) {
-		lcd_func = lcd_draw_line_sliced;
-	}
-	else if(adapter->selected_scale == 3) {
-		lcd_func = lcd_draw_line_doubled;
-	}
-	
 	gb_init_lcd(&adapter->gb, NULL);
-	adapter->gb.display.lcd_draw_line = lcd_func;
 	adapter->gb.direct.frame_skip = 1;
 	adapter->gb.direct.joypad = 255;
 	adapter->gb.direct.interlace = adapter->interlace_enabled;
@@ -179,6 +162,7 @@ bool GKGameBoyAdapterLoad(GKGameBoyAdapter* adapter, const char* path) {
 void GKGameBoyAdapterUpdate(GKGameBoyAdapter* adapter, unsigned int dt) {
 	static unsigned int rtc_timer = 0;
 	unsigned int fast_mode = 1;
+	bool force_update = adapter->clear_next_frame;
 	// const double target_speed_ms = 1000.0 / (VERTICAL_SYNC);
 	// double speed_compensation = 0.0;
 	
@@ -194,9 +178,24 @@ void GKGameBoyAdapterUpdate(GKGameBoyAdapter* adapter, unsigned int dt) {
 	update_joypad(adapter);
 	update_crank(adapter);
 	
-	// view->updated_row_top = LCD_ROWS;
-	// view->updated_row_bottom = 0;
 	gb_run_frame(&adapter->gb);
+	
+	if(force_update) {
+		memset(adapter->gb.display.changed_rows, 1, sizeof(adapter->gb.display.changed_rows));
+		adapter->gb.display.changed_row_count = LCD_HEIGHT;
+	}
+	
+	if(force_update || (adapter->gb.display.changed_row_count > 0 && (!adapter->gb.direct.frame_skip || !adapter->gb.display.frame_skip_count))) {
+		if(adapter->selected_scale == 0) {
+			update_display_natural(adapter);
+		}
+		else if(adapter->selected_scale == 1) {
+			update_display_fitted(adapter);
+		}
+		else if(adapter->selected_scale == 2) {
+			update_display_doubled(adapter);
+		}
+	}
 	
 	// Tick the internal RTC every 1 second.
 	rtc_timer += dt;// target_speed_ms / fast_mode;
@@ -258,26 +257,7 @@ static void menu_item_scale(void* context) {
 	GKGameBoyAdapter* adapter = (GKGameBoyAdapter*)context;
 	
 	adapter->selected_scale = playdate->system->getMenuItemValue(adapter->scale_menu);
-	
-	void* fn = NULL;
-	
-	if(adapter->selected_scale == 0) {
-		fn = lcd_draw_line_natural;
-	}
-	else if(adapter->selected_scale == 1) {
-		fn = lcd_draw_line_fitted;
-	}
-	else if(adapter->selected_scale == 2) {
-		fn = lcd_draw_line_sliced;
-	}
-	else if(adapter->selected_scale == 3) {
-		fn = lcd_draw_line_doubled;
-	}
-	
-	if(fn != NULL) {
-		adapter->gb.display.lcd_draw_line = fn;
-		adapter->clear_next_frame = true;
-	}
+	adapter->clear_next_frame = true;
 }
 
 static void menu_item_interlace(void* context) {
@@ -290,14 +270,13 @@ static void add_menus(GKGameBoyAdapter* adapter) {
 	const char* menu_items[] = {
 		"natural",
 		"fitted",
-		"sliced",
 		"doubled"
 	};
 	
-	adapter->scale_menu = playdate->system->addOptionsMenuItem("Scale", menu_items, 4, menu_item_scale, adapter);
-	adapter->interlace_menu = playdate->system->addCheckmarkMenuItem("Interlace", 1, menu_item_interlace, adapter);
+	adapter->scale_menu = playdate->system->addOptionsMenuItem("Scale", menu_items, 3, menu_item_scale, adapter);
+	// adapter->interlace_menu = playdate->system->addCheckmarkMenuItem("Interlace", adapter->interlace_enabled, menu_item_interlace, adapter);
 	
-	playdate->system->setMenuItemValue(adapter->scale_menu, 1);
+	playdate->system->setMenuItemValue(adapter->scale_menu, adapter->selected_scale);
 }
 
 static void free_menus(GKGameBoyAdapter* adapter) {
@@ -434,7 +413,7 @@ static void error(struct gb_s* gb, const enum gb_error_e gb_err, const uint16_t 
 #pragma mark -
 #pragma mark Rendering
 
-static const int GKDisplayPatterns[4][4][4] = {
+static const uint32_t GKDisplayPatterns[4][4][4] = {
 	{ // White
 		{1, 1, 1, 1},
 		{1, 1, 1, 1},
@@ -471,225 +450,222 @@ static inline uint32_t swap(uint32_t n) {
 #endif
 }
 
-static void lcd_draw_line_sliced(struct gb_s* gb, const uint8_t pixels[160], const uint_fast8_t line) {
-	#define INTERLACE_MULTIPLE 1.5
-	const uint32_t screen_x = GKFastDiv2(400 - 240); // Where it's going.
-	const uint32_t start_x = 11; // Bit to start on.
-	const uint32_t start_y = GKFastDiv2(240 - (uint32_t)(LCD_HEIGHT * INTERLACE_MULTIPLE)) + (line * INTERLACE_MULTIPLE);
-	const uint32_t line_mod = GKFastMod4(line);
-	GKGameBoyAdapter* adapter = gb->direct.priv;
+static void update_display_natural(GKGameBoyAdapter* adapter) {
+	const uint32_t start_x = 24;
+	const uint32_t start_y = 48;
 	
-	if(start_y < 0 || start_y >= LCD_ROWS) {
-		return;
-	}
+	uint32_t* display_frame = (uint32_t*)playdate->graphics->getFrame();
+	uint32_t* frame = NULL;
 	
-	uint32_t* frame = adapter->current_frame + ((GKFastDiv4(LCD_ROWSIZE) * start_y)) + 1;
-	uint32_t accumulator = swap(*frame);
-	uint32_t bit;
-	uint32_t last_bit = 0;
+	for(uint32_t line = 0; line < LCD_HEIGHT; line++) {
+		if(adapter->gb.display.changed_rows[line] == 0) {
+			continue;
+		}
+		
+		frame = adapter->current_frame + (((LCD_ROWSIZE / 4) * (start_y + line))) + 3;
+		const uint8_t* const pixels = !adapter->gb.display.back_fb_enabled ? adapter->gb.display.back_fb[line] : adapter->gb.display.front_fb[line];
 	
-	for(uint32_t x = start_x; x < LCD_WIDTH + start_x; x++) {
-		bit = 31 - GKFastMod32((uint32_t)(x * INTERLACE_MULTIPLE));
-		if(last_bit < bit) {
+		uint32_t accumulator = 0x00000000;
+		const uint32_t line_mod = GKFastMod4(line);
+		
+		// Handle first 8 bits of row.
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[0] & 0x3][line_mod][0], 7, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[1] & 0x3][line_mod][1], 6, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[2] & 0x3][line_mod][2], 5, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[3] & 0x3][line_mod][3], 4, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[4] & 0x3][line_mod][0], 3, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[5] & 0x3][line_mod][1], 2, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[6] & 0x3][line_mod][2], 1, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[7] & 0x3][line_mod][3], 0, accumulator);
+		*frame = swap(accumulator);
+		frame++;
+		accumulator = 0x00000000;
+		
+		uint32_t x = 8;
+		
+		for(uint32_t i = 0; i < 4; i++) {
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][0], 31, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][1], 30, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][2], 29, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][3], 28, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][0], 27, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][1], 26, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][2], 25, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][3], 24, accumulator);
+			
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][0], 23, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][1], 22, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][2], 21, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][3], 20, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][0], 19, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][1], 18, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][2], 17, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][3], 16, accumulator);
+		
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][0], 15, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][1], 14, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][2], 13, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][3], 12, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][0], 11, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][1], 10, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][2], 9, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][3], 8, accumulator);
+			
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][0], 7, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][1], 6, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][2], 5, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][3], 4, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][0], 3, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][1], 2, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][2], 1, accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 0x3][line_mod][3], 0, accumulator);
+		
 			*frame = swap(accumulator);
 			frame++;
 			accumulator = 0x00000000;
 		}
-		last_bit = bit;
-		GKSetOrClearBitIf(GKDisplayPatterns[GKFastMod4(pixels[x - start_x])][line_mod][GKFastMod4(x)], bit, accumulator);
-	}
-	*frame = swap(accumulator);
-	
-	playdate->graphics->markUpdatedRows(start_y, start_y);
-}
-
-static void lcd_draw_line_fitted(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line) {
-	GKGameBoyAdapter* adapter = gb->direct.priv;
-	
-	const uint32_t screen_x = (400-(160*2))/2;
-	const uint32_t start_x = GKFastMod32(screen_x);
-	const uint32_t double_line = line * 2;
-	
-	// Screen Y is doubled then we remove every 6th line.
-	uint32_t line_one_sy = double_line - floor((float)double_line / 6.0f);
-	uint32_t line_two_sy = line_one_sy + 1;
-	
-	bool skip_line_one = (double_line % 6 == 5);
-	bool skip_line_two = ((double_line + 1) % 6 == 5);
-	
-	uint32_t* line_one = NULL;
-	uint32_t* line_two = NULL;
-	uint32_t line_one_accumulator = 0x00000000, line_two_accumulator = 0x00000000;
-	
-	if(!skip_line_one) {
-		line_one = adapter->current_frame + ((GKFastDiv4(LCD_ROWSIZE) * line_one_sy)) + GKFastDiv32(screen_x);
-		line_one_accumulator = swap(*line_one);
-	}
-	
-	if(!skip_line_two) {
-		line_two = adapter->current_frame + ((GKFastDiv4(LCD_ROWSIZE) * line_two_sy)) + GKFastDiv32(screen_x);
-		line_two_accumulator = swap(*line_two);
-	}
-	
-	const uint32_t line_one_mod = GKFastMod4(line_one_sy);
-	const uint32_t line_two_mod = GKFastMod4(line_two_sy);
-	
-	uint32_t bit;
-	for(uint32_t x = start_x; x < GKFastMult2(LCD_WIDTH) + start_x; x++) {
-		bit = 31 - GKFastMod32(x);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[GKFastDiv2(x - start_x)] & 3][line_one_mod][GKFastMod4(x)], bit, line_one_accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[GKFastDiv2(x - start_x)] & 3][line_two_mod][GKFastMod4(x)], bit, line_two_accumulator);
-		if(bit == 0) {
-			if(line_one != NULL) {
-				*line_one = swap(line_one_accumulator);
-				line_one++;
-				line_one_accumulator = 0x00000000;
-			}
-			if(line_two != NULL) {
-				*line_two = swap(line_two_accumulator);
-				line_two++;
-				line_two_accumulator = 0x00000000;
-			}
-		}
-	}
-	if(line_one != NULL) {
-		*line_one = swap(line_one_accumulator);
-	}
-	if(line_two != NULL) {
-		*line_two = swap(line_two_accumulator);
-	}
-	
-	playdate->graphics->markUpdatedRows(line_one_sy, line_one_sy+1);
-}
-
-static void lcd_draw_line_doubled(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line) {
-	const uint32_t screen_x = GKFastDiv2(400-GKFastMult2(160));
-	const uint32_t start_x = GKFastMod32(screen_x);
-	const uint32_t line_offset = 12;
-	const int start_y = GKFastMult2(line - line_offset);
-	GKGameBoyAdapter* adapter = gb->direct.priv;
-	
-	if(start_y < 0 || start_y >= LCD_ROWS) {
-		return;
-	}
-
-	uint32_t* frame = adapter->current_frame + ((GKFastDiv4(LCD_ROWSIZE) * start_y)) + GKFastDiv32(screen_x);
-	uint32_t accumulator = swap(*frame);
-	uint32_t bit;
-	
-	for(uint32_t y = start_y; y <= start_y + 1; y++) {
-		for(uint32_t x = start_x; x < (LCD_WIDTH * 2) + start_x; x++) {
-			bit = 31 - GKFastMod32(x);
-			GKSetOrClearBitIf(GKDisplayPatterns[pixels[GKFastDiv2(x - start_x)] & 3][GKFastMod4(y)][GKFastMod4(x)], bit, accumulator);
-			if(bit == 0) {
-				*frame = swap(accumulator);
-				frame++;
-				accumulator = 0x00000000;
-			}
-		}
+		
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[136] & 0x3][line_mod][0], 31, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[137] & 0x3][line_mod][1], 30, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[138] & 0x3][line_mod][2], 29, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[139] & 0x3][line_mod][3], 28, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[140] & 0x3][line_mod][0], 27, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[141] & 0x3][line_mod][1], 26, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[142] & 0x3][line_mod][2], 25, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[143] & 0x3][line_mod][3], 24, accumulator);
+		
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[144] & 0x3][line_mod][0], 23, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[145] & 0x3][line_mod][1], 22, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[146] & 0x3][line_mod][2], 21, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[147] & 0x3][line_mod][3], 20, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[148] & 0x3][line_mod][0], 19, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[149] & 0x3][line_mod][1], 18, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[150] & 0x3][line_mod][2], 17, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[151] & 0x3][line_mod][3], 16, accumulator);
+		
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[152] & 0x3][line_mod][0], 15, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[153] & 0x3][line_mod][1], 14, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[154] & 0x3][line_mod][2], 13, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[155] & 0x3][line_mod][3], 12, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[156] & 0x3][line_mod][0], 11, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[157] & 0x3][line_mod][1], 10, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[158] & 0x3][line_mod][2], 9, accumulator);
+		GKSetOrClearBitIf(GKDisplayPatterns[pixels[159] & 0x3][line_mod][3], 8, accumulator);
 		*frame = swap(accumulator);
-		frame = adapter->current_frame + ((GKFastDiv4(LCD_ROWSIZE) * (start_y + 1))) + GKFastDiv32(screen_x);
+		
+		playdate->graphics->markUpdatedRows(start_y + line, start_y + line);
+	}
+}
+
+static void update_display_doubled(GKGameBoyAdapter* adapter) {
+	const uint32_t screen_x = GKFastDiv2(LCD_COLUMNS-GKFastMult2(LCD_WIDTH));
+	const uint32_t start_x = GKFastMod32(screen_x);
+	uint32_t screen_y;
+	
+	uint32_t* display_frame = (uint32_t*)playdate->graphics->getFrame();
+	uint32_t* frame = NULL;
+	uint32_t accumulator;
+	uint32_t bit;
+	
+	for(uint32_t line = 12; line < LCD_HEIGHT - 12; line++) {
+		if(adapter->gb.display.changed_rows[line] == 0) {
+			continue;
+		}
+		
+		screen_y = GKFastMult2(line - 12);
+		if((screen_y + 1) >= LCD_ROWS) {
+			break;
+		}
+		
+		const uint8_t* const pixels = !adapter->gb.display.back_fb_enabled ? adapter->gb.display.back_fb[line] : adapter->gb.display.front_fb[line];
+		
+		frame = display_frame + ((GKFastDiv4(LCD_ROWSIZE) * screen_y)) + GKFastDiv32(screen_x);
 		accumulator = swap(*frame);
+		bit = 0;
+		for(uint32_t y = screen_y; y <= GKMin(screen_y + 1, LCD_ROWS); y++) {
+			for(uint32_t x = start_x; x < (LCD_WIDTH * 2) + start_x; x++) {
+				bit = 31 - GKFastMod32(x);
+				GKSetOrClearBitIf(GKDisplayPatterns[pixels[GKFastDiv2(x - start_x)] & 3][GKFastMod4(y)][GKFastMod4(x)], bit, accumulator);
+				if(bit == 0) {
+					*frame = swap(accumulator);
+					frame++;
+					accumulator = 0x00000000;
+				}
+			}
+			*frame = swap(accumulator);
+			frame = display_frame + ((GKFastDiv4(LCD_ROWSIZE) * (screen_y + 1))) + GKFastDiv32(screen_x);
+			accumulator = swap(*frame);
+		}
+		
+		playdate->graphics->markUpdatedRows(screen_y, screen_y+1);
 	}
-	
-	playdate->graphics->markUpdatedRows(start_y, start_y+1);
 }
 
-static void lcd_draw_line_natural(struct gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line) {
-	const uint32_t start_x = 24;
-	const uint32_t start_y = line + 48;
-	const uint32_t line_mod = GKFastMod4(line);
-	GKGameBoyAdapter* adapter = gb->direct.priv;
+
+static void update_display_fitted(GKGameBoyAdapter* adapter) {
+	const uint32_t screen_x = GKFastDiv2(LCD_COLUMNS-GKFastMult2(LCD_WIDTH));
+	const uint32_t start_x = GKFastMod32(screen_x);
+	uint32_t* display_frame = (uint32_t*)playdate->graphics->getFrame();
 	
-	uint32_t* frame = adapter->current_frame + (((LCD_ROWSIZE / 4) * start_y)) + 3;
-	uint32_t accumulator = 0x00000000;// swap(*frame);
-	uint32_t bit;
-	
-	
-	// Handle first 8 bits
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[0] & 3][line_mod][0], 31 - GKFastMod32(24), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[1] & 3][line_mod][1], 31 - GKFastMod32(24 + 1), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[2] & 3][line_mod][2], 31 - GKFastMod32(24 + 2), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[3] & 3][line_mod][3], 31 - GKFastMod32(24 + 3), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[4] & 3][line_mod][0], 31 - GKFastMod32(24 + 4), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[5] & 3][line_mod][1], 31 - GKFastMod32(24 + 5), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[6] & 3][line_mod][2], 31 - GKFastMod32(24 + 6), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[7] & 3][line_mod][3], 31 - GKFastMod32(24 + 7), accumulator);
-	*frame = swap(accumulator);
-	frame++;
-	accumulator = 0x00000000;
-	
-	uint32_t x = 8;
-	
-	for(uint32_t i = 0; i < 4; i++) {
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][0], 31 - GKFastMod32(0), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][1], 31 - GKFastMod32(1), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][2], 31 - GKFastMod32(2), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][3], 31 - GKFastMod32(3), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][0], 31 - GKFastMod32(4), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][1], 31 - GKFastMod32(5), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][2], 31 - GKFastMod32(6), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][3], 31 - GKFastMod32(7), accumulator);
+	for(uint32_t line = 0; line < LCD_HEIGHT; line++) {
+		if(adapter->gb.display.changed_rows[line] == 0) {
+			continue;
+		}
 		
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][0], 31 - GKFastMod32(8), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][1], 31 - GKFastMod32(9), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][2], 31 - GKFastMod32(10), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][3], 31 - GKFastMod32(11), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][0], 31 - GKFastMod32(12), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][1], 31 - GKFastMod32(13), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][2], 31 - GKFastMod32(14), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][3], 31 - GKFastMod32(15), accumulator);
-	
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][0], 31 - GKFastMod32(16), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][1], 31 - GKFastMod32(17), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][2], 31 - GKFastMod32(18), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][3], 31 - GKFastMod32(19), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][0], 31 - GKFastMod32(20), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][1], 31 - GKFastMod32(21), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][2], 31 - GKFastMod32(22), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][3], 31 - GKFastMod32(23), accumulator);
+		const uint8_t* const pixels = !adapter->gb.display.back_fb_enabled ? adapter->gb.display.back_fb[line] : adapter->gb.display.front_fb[line];
 		
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][0], 31 - GKFastMod32(24), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][1], 31 - GKFastMod32(25), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][2], 31 - GKFastMod32(26), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][3], 31 - GKFastMod32(27), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][0], 31 - GKFastMod32(28), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][1], 31 - GKFastMod32(29), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][2], 31 - GKFastMod32(30), accumulator);
-		GKSetOrClearBitIf(GKDisplayPatterns[pixels[x++] & 3][line_mod][3], 31 - GKFastMod32(31), accumulator);
-	
-		*frame = swap(accumulator);
-		frame++;
-		accumulator = 0x00000000;
+		const uint32_t double_line = GKFastMult2(line);
+		
+		// Screen Y is doubled then we remove every 6th line.
+		uint32_t line_one_sy = double_line - floor((float)double_line / 6.0f);
+		uint32_t line_two_sy = line_one_sy + 1;
+		
+		bool skip_line_one = (double_line % 6 == 5);
+		bool skip_line_two = ((double_line + 1) % 6 == 5);
+		
+		uint32_t* line_one = NULL;
+		uint32_t* line_two = NULL;
+		uint32_t line_one_accumulator = 0x00000000, line_two_accumulator = 0x00000000;
+		
+		if(!skip_line_one) {
+			line_one = display_frame + ((GKFastDiv4(LCD_ROWSIZE) * line_one_sy)) + GKFastDiv32(screen_x);
+			line_one_accumulator = swap(*line_one);
+		}
+		
+		if(!skip_line_two) {
+			line_two = display_frame + ((GKFastDiv4(LCD_ROWSIZE) * line_two_sy)) + GKFastDiv32(screen_x);
+			line_two_accumulator = swap(*line_two);
+		}
+		
+		const uint32_t line_one_mod = GKFastMod4(line_one_sy);
+		const uint32_t line_two_mod = GKFastMod4(line_two_sy);
+		
+		uint32_t bit;
+		for(uint32_t x = start_x; x < GKFastMult2(LCD_WIDTH) + start_x; x++) {
+			bit = 31 - GKFastMod32(x);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[GKFastDiv2(x - start_x)] & 3][line_one_mod][GKFastMod4(x)], bit, line_one_accumulator);
+			GKSetOrClearBitIf(GKDisplayPatterns[pixels[GKFastDiv2(x - start_x)] & 3][line_two_mod][GKFastMod4(x)], bit, line_two_accumulator);
+			if(bit == 0) {
+				if(line_one != NULL) {
+					*line_one = swap(line_one_accumulator);
+					line_one++;
+					line_one_accumulator = 0x00000000;
+				}
+				if(line_two != NULL) {
+					*line_two = swap(line_two_accumulator);
+					line_two++;
+					line_two_accumulator = 0x00000000;
+				}
+			}
+		}
+		if(line_one != NULL) {
+			*line_one = swap(line_one_accumulator);
+		}
+		if(line_two != NULL) {
+			*line_two = swap(line_two_accumulator);
+		}
+		
+		playdate->graphics->markUpdatedRows(line_one_sy, line_one_sy+1);
 	}
 	
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[136] & 3][line_mod][0], 31 - GKFastMod32(0), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[137] & 3][line_mod][1], 31 - GKFastMod32(1), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[138] & 3][line_mod][2], 31 - GKFastMod32(2), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[139] & 3][line_mod][3], 31 - GKFastMod32(3), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[140] & 3][line_mod][0], 31 - GKFastMod32(4), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[141] & 3][line_mod][1], 31 - GKFastMod32(5), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[142] & 3][line_mod][2], 31 - GKFastMod32(6), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[143] & 3][line_mod][3], 31 - GKFastMod32(7), accumulator);
-	
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[144] & 3][line_mod][0], 31 - GKFastMod32(8), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[145] & 3][line_mod][1], 31 - GKFastMod32(9), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[146] & 3][line_mod][2], 31 - GKFastMod32(10), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[147] & 3][line_mod][3], 31 - GKFastMod32(11), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[148] & 3][line_mod][0], 31 - GKFastMod32(12), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[149] & 3][line_mod][1], 31 - GKFastMod32(13), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[150] & 3][line_mod][2], 31 - GKFastMod32(14), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[151] & 3][line_mod][3], 31 - GKFastMod32(15), accumulator);
-	
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[152] & 3][line_mod][0], 31 - GKFastMod32(16), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[153] & 3][line_mod][1], 31 - GKFastMod32(17), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[154] & 3][line_mod][2], 31 - GKFastMod32(18), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[155] & 3][line_mod][3], 31 - GKFastMod32(19), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[156] & 3][line_mod][0], 31 - GKFastMod32(20), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[157] & 3][line_mod][1], 31 - GKFastMod32(21), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[158] & 3][line_mod][2], 31 - GKFastMod32(22), accumulator);
-	GKSetOrClearBitIf(GKDisplayPatterns[pixels[159] & 3][line_mod][3], 31 - GKFastMod32(23), accumulator);
-	*frame = swap(accumulator);
-	
-	playdate->graphics->markUpdatedRows(start_y, start_y);
 }

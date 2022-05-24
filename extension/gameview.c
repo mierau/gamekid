@@ -9,17 +9,11 @@
 #if GAMEBOY_ENABLED
 #include "emulator/adapter_gb.h"
 #endif
-#if GAMEWATCH_ENABLED
-#include "emulator/adapter_gw.h"
-#endif
 
 typedef struct _GKGameView {
 	PDMenuItem* library_menu;
 #if GAMEBOY_ENABLED
 	GKGameBoyAdapter* gameboy;
-#endif
-#if GAMEWATCH_ENABLED
-	GKGameWatchAdapter* gamewatch;
 #endif
 } GKGameView;
 
@@ -65,15 +59,6 @@ bool GKGameViewShow(GKGameView* view, const char* path) {
 	}
 	else
 #endif
-#if GAMEWATCH_ENABLED
-	if(strcasecmp(file_extension, ".mgw") == 0) {
-		view->gamewatch = GKGameWatchAdapterCreate();
-		if(GKGameWatchAdapterLoad(view->gamewatch, path)) {
-			return true;
-		}
-	}
-	else
-#endif
 	{}
 	
 	return false;
@@ -95,11 +80,6 @@ void GKGameViewUpdate(GKGameView* view, unsigned int dt) {
 	}
 	else
 #endif
-#if GAMEWATCH_ENABLED
-	if(view->gamewatch != NULL) {
-		GKGameWatchAdapterUpdate(view->gamewatch, dt);
-	}
-#endif
 	{}
 }
 
@@ -110,12 +90,6 @@ static void free_adapters(GKGameView* view) {
 	if(view->gameboy != NULL) {
 		GKGameBoyAdapterDestroy(view->gameboy);
 		view->gameboy = NULL;
-	}
-#endif
-#if GAMEWATCH_ENABLED
-	if(view->gamewatch != NULL) {
-		GKGameWatchAdapterDestroy(view->gamewatch);
-		view->gamewatch = NULL;
 	}
 #endif
 }
