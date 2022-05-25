@@ -25,4 +25,7 @@ void GKAppGoToLibrary(GKApp* app);
 void GKAppSetFPSEnabled(bool enabled);
 bool GKAppGetFPSEnabled(void);
 
+void GKAppSetSoundEnabled(bool enabled);
+bool GKAppGetSoundEnabled(void);
+
 #endif

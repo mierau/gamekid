@@ -6,14 +6,11 @@
 #include <stdio.h>
 #include <math.h>
 
-#define ENABLE_SOUND 0
+#define ENABLE_SOUND 1
 #define ENABLE_LCD 1
 #define PEANUT_GB_HIGH_LCD_ACCURACY 0
 
-#if ENABLE_SOUND
 #include "emulator/gb/minigb_apu.h"
-#endif
-
 #include "emulator/gb/peanut_gb.h"
 
 typedef struct _GKGameBoyAdapter {
@@ -23,18 +20,15 @@ typedef struct _GKGameBoyAdapter {
 	uint8_t* rom; // Memory for ROM file.
 	uint8_t* cart_ram; // Memory for save file.
 	char* save_file_name;
-#if ENABLE_SOUND
 	SoundSource* sound_source;
-#endif
 	PDMenuItem* scale_menu;
-	PDMenuItem* interlace_menu;
+	PDMenuItem* sound_menu;
 	
 	float crank_previous;
 	int selected_scale;
 	int save_timer;
 
 	bool clear_next_frame;
-	bool interlace_enabled;
 } GKGameBoyAdapter;
 
 #pragma mark -
@@ -63,7 +57,6 @@ GKGameBoyAdapter* GKGameBoyAdapterCreate(void) {
 	adapter->crank_previous = playdate->system->getCrankAngle();
 	adapter->clear_next_frame = true;
 	adapter->selected_scale = 1;
-	adapter->interlace_enabled = false;
 
 	return adapter;
 }
@@ -71,6 +64,11 @@ GKGameBoyAdapter* GKGameBoyAdapterCreate(void) {
 void GKGameBoyAdapterDestroy(GKGameBoyAdapter* adapter) {
 	save(adapter);
 	reset(adapter);
+	
+	playdate->sound->removeSource(adapter->sound_source);
+	adapter->sound_source = NULL;
+	adapter->gb.direct.sound_enabled = 0;
+	
 	free_menus(adapter);
 	free(adapter);
 }
@@ -138,19 +136,19 @@ bool GKGameBoyAdapterLoad(GKGameBoyAdapter* adapter, const char* path) {
 	
 	// Load save file.
 	load_save(adapter->save_file_name, &adapter->cart_ram, gb_get_save_size(&adapter->gb));
-	
-	// Initialize sound.
-#if ENABLE_SOUND
-	playdate->sound->channel->setVolume(playdate->sound->getDefaultChannel(), 0.2f);
-	adapter->sound_source = playdate->sound->addSource(GKAudioSourceCallback, NULL, 1);
-	audio_init();
-#endif
 
 	// Initialize display.
 	gb_init_lcd(&adapter->gb, NULL);
 	adapter->gb.direct.frame_skip = 1;
 	adapter->gb.direct.joypad = 255;
-	adapter->gb.direct.interlace = adapter->interlace_enabled;
+	
+	// Initialize sound.
+	if(GKAppGetSoundEnabled()) {
+		audio_init();
+		playdate->sound->channel->setVolume(playdate->sound->getDefaultChannel(), 0.2f);
+		adapter->sound_source = playdate->sound->addSource(GKAudioSourceCallback, NULL, 1);
+		adapter->gb.direct.sound_enabled = 1;
+	}
 
 	// auto_assign_palette(&priv, gb_colour_hash(&gb));
 	
@@ -260,12 +258,6 @@ static void menu_item_scale(void* context) {
 	adapter->clear_next_frame = true;
 }
 
-static void menu_item_interlace(void* context) {
-	GKGameBoyAdapter* adapter = (GKGameBoyAdapter*)context;	
-	adapter->interlace_enabled = playdate->system->getMenuItemValue(adapter->interlace_menu);
-	adapter->gb.direct.interlace = adapter->interlace_enabled;
-}
-
 static void add_menus(GKGameBoyAdapter* adapter) {
 	const char* menu_items[] = {
 		"natural",
@@ -274,7 +266,6 @@ static void add_menus(GKGameBoyAdapter* adapter) {
 	};
 	
 	adapter->scale_menu = playdate->system->addOptionsMenuItem("Scale", menu_items, 3, menu_item_scale, adapter);
-	// adapter->interlace_menu = playdate->system->addCheckmarkMenuItem("Interlace", adapter->interlace_enabled, menu_item_interlace, adapter);
 	
 	playdate->system->setMenuItemValue(adapter->scale_menu, adapter->selected_scale);
 }
@@ -284,19 +275,17 @@ static void free_menus(GKGameBoyAdapter* adapter) {
 		playdate->system->removeMenuItem(adapter->scale_menu);
 		adapter->scale_menu = NULL;
 	}
-	if(adapter->interlace_menu != NULL) {
-		playdate->system->removeMenuItem(adapter->interlace_menu);
-		adapter->interlace_menu = NULL;
+	if(adapter->sound_menu != NULL) {
+		playdate->system->removeMenuItem(adapter->sound_menu);
+		adapter->sound_menu = NULL;
 	}
 }
 
 static void reset(GKGameBoyAdapter* adapter) {
-#if ENABLE_SOUND
 	if(adapter->sound_source != NULL) {
 		playdate->sound->removeSource(adapter->sound_source);
 		adapter->sound_source = NULL;
 	}
-#endif
 
 	if(adapter->cart_ram != NULL) {
 		free(adapter->cart_ram);

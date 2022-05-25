@@ -16,6 +16,7 @@ typedef struct _GKApp {
 	GKLibraryView* libraryview;
 	unsigned int last_time;
 	bool display_fps;
+	bool enable_sound;
 } GKApp;
 
 static int GKAppRunloop(void* context);
@@ -41,6 +42,7 @@ void GKAppRun(void) {
 	app->gameview = GKGameViewCreate();
 	app->scene = kGKAppSceneBooting;
 	app->last_time = playdate->system->getCurrentTimeMilliseconds();
+	app->enable_sound = false;
 		
 	playdate->display->setRefreshRate(50);
 	playdate->system->setUpdateCallback(GKAppRunloop, app);
@@ -116,4 +118,12 @@ void GKAppSetFPSEnabled(bool enabled) {
 
 bool GKAppGetFPSEnabled(void) {
 	return app->display_fps;
+}
+
+void GKAppSetSoundEnabled(bool enabled) {
+	app->enable_sound = enabled;
+}
+
+bool GKAppGetSoundEnabled(void) {
+	return app->enable_sound;
 }

@@ -22,9 +22,11 @@ typedef struct _GKLibraryView {
 	SamplePlayer* up_sound;
 	SamplePlayer* down_sound;
 	PDMenuItem* fps_menu;
+	PDMenuItem* sound_menu;
 } GKLibraryView;
 
 static void menu_item_fps(void* context);
+static void menu_item_sound(void* context);
 
 GKLibraryView* GKLibraryViewCreate(GKApp* app) {
 	GKLibraryView* view = malloc(sizeof(GKLibraryView));
@@ -116,6 +118,10 @@ void GKLibraryViewShow(GKLibraryView* view) {
 		view->fps_menu = playdate->system->addCheckmarkMenuItem("FPS", GKAppGetFPSEnabled(), menu_item_fps, view);
 	}
 	
+	if(view->sound_menu == NULL) {
+		view->sound_menu = playdate->system->addCheckmarkMenuItem("Sound", GKAppGetSoundEnabled(), menu_item_sound, view);
+	}
+	
 	playdate->file->listfiles("/games", listFilesCallback, view);
 }
 
@@ -124,11 +130,21 @@ void GKLibraryViewHide(GKLibraryView* view) {
 		playdate->system->removeMenuItem(view->fps_menu);
 		view->fps_menu = NULL;
 	}
+	
+	if(view->sound_menu != NULL) {
+		playdate->system->removeMenuItem(view->sound_menu);
+		view->sound_menu = NULL;
+	}
 }
 
 static void menu_item_fps(void* context) {
 	GKLibraryView* view = (GKLibraryView*)context;
 	GKAppSetFPSEnabled(playdate->system->getMenuItemValue(view->fps_menu));
+}
+
+static void menu_item_sound(void* context) {
+	GKLibraryView* view = (GKLibraryView*)context;
+	GKAppSetSoundEnabled(playdate->system->getMenuItemValue(view->sound_menu));
 }
 
 #define LIST_ROW_HEIGHT 36
