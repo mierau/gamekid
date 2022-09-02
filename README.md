@@ -6,12 +6,14 @@ This is still very much a work in progress. FPS is not yet where we want it to b
 ## Install
 1. [Download](https://github.com/mierau/gamekid/releases/) the latest version of Gamekid.
 2. [Sideload](https://play.date/account/sideload/) the resulting pdx on your Playdate.
+3. Start Gamekid on your Playdate to create the default folders.
 
 ## Install Games
 The Game Boy has a bustling homebrew community. There are various sources online, but [Itch](https://itch.io/games/tag-gameboy/tag-homebrew) or [Homebrew Hub](https://gbhh.avivace.com/games) seem to be good places to start.
 1. Reboot your Playdate into Data Disk mode (Settings > System > Reboot to Data Disk).
 2. Connect your Playdate to your computer.
-3. Copy your .gb files into the `*.gamekid/games` folder.
+3. Select the Playdate drive.
+3. Copy your .gb files into the `Data/user.*userid*.gamekid/games` folder.
 4. Unmount the Playdate.
 5. That's it. Run Gamekid. Enjoy!
 
