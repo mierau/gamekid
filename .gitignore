@@ -2,7 +2,6 @@
 *.o
 *.lst
 Extension/.dep/*.o.d
-*.pdx
 *.dylib.dSYM
 *.dylib
 *.bin
