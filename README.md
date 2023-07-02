@@ -1,3 +1,5 @@
+# This for is not maintained, it was opened to add OS 2.0 compatability to Gamekid 5.1
+
 # Gamekid
 A community built Game Boy emulator for [Playdate](https://play.date).  
 The emulator backend is provided by the equally teeny [PeanutGB](https://github.com/deltabeard/Peanut-GB).  
