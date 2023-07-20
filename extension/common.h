@@ -4,6 +4,9 @@
 #ifndef common_h
 #define common_h
 
+#define DEBUG 0
+#define GAMEBOY_ENABLED 1
+
 #include <string.h>
 #include "pd_api.h"
 #include "app.h"
