@@ -122,7 +122,7 @@ void GKLibraryViewShow(GKLibraryView* view) {
 		view->sound_menu = playdate->system->addCheckmarkMenuItem("Sound", GKAppGetSoundEnabled(), menu_item_sound, view);
 	}
 	
-	playdate->file->listfiles("/games", listFilesCallback, view);
+	playdate->file->listfiles("/games", listFilesCallback, view, 0);
 }
 
 void GKLibraryViewHide(GKLibraryView* view) {
