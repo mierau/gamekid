@@ -24,8 +24,10 @@ Start/Select: Move the crank to activate start/select buttons.
 Open the Playdate menu for scaling and interlacing options.
 
 ## Building
-1. Grab a copy of [Playdate SDK](https://play.date/dev/) for your system.
-2. Run `make` within the Gamekid folder. OR! grab yourself a copy of [Nova](https://nova.app) from [Panic](https://panic.com) (makers of the Playdate).
+1. If you're building on Apple silicon (M1, M2, etc.), make sure you have Rosetta installed as the ARM toolchain is built for Intel processors. You can do this on the command line: `softwareupdate --install-rosetta`
+2. Review Panic's [How to use the C API](https://sdk.play.date/2.0.1/Inside%20Playdate%20with%20C.html#_how_to_use_the_c_api) doc. 
+3. Grab a copy of [Playdate SDK](https://play.date/dev/) for your system.
+4. Run `make` within the Gamekid folder. OR! grab yourself a copy of [Nova](https://nova.app) from [Panic](https://panic.com) (makers of the Playdate).
 
 ## Contributing
 Gamekid is pretty good, but it isn't perfect. But we can get it there with your help!  
